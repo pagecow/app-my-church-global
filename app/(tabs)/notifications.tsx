@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { StyleSheet, View, Text, FlatList, ActivityIndicator, Image, RefreshControl } from 'react-native';
+import { StyleSheet, View, Text, FlatList, ActivityIndicator, RefreshControl, TouchableOpacity } from 'react-native';
 import { useAuth } from '../../context/AuthContext';
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Navbar from '../../components/Navbar';
+import { useRouter } from 'expo-router';
 
 const API_URL = 'https://appmychurch.com/api/v1';
 
@@ -31,13 +32,57 @@ const formatTimeAgo = (dateString: string) => {
   return `${Math.floor(diffD / 30)}mo`;
 };
 
+const stripHtml = (html: string) => {
+  if (!html) return '';
+  return html
+    .replace(/<[^>]*>/g, '')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .trim();
+};
+
 export default function NotificationsScreen() {
   const { token, user } = useAuth();
+  const router = useRouter();
   const [notifications, setNotifications] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
-  useEffect(() => { if (token) fetchNotifications(); }, [token]);
+  useEffect(() => {
+    if (token && user?.native_notify_indie_id) fetchNotifications();
+  }, [token, user?.native_notify_indie_id]);
+
+  const parsePushData = (pushData: any) => {
+    if (!pushData) return {};
+    if (typeof pushData === 'string') {
+      try {
+        return JSON.parse(pushData);
+      } catch {
+        return {};
+      }
+    }
+    if (typeof pushData === 'object') return pushData;
+    return {};
+  };
+
+  const openNotificationTarget = (item: any) => {
+    const data = parsePushData(item?.pushData);
+    const postId = data?.postId;
+    const commentId = data?.parentId || data?.commentId;
+    if (!postId) return;
+    const shouldOpenComments = Boolean(data?.comment || data?.reply || commentId);
+
+    router.push({
+      pathname: '/notification-thread',
+      params: commentId
+        ? { postId, commentId, openComments: shouldOpenComments ? '1' : '0' }
+        : { postId, openComments: shouldOpenComments ? '1' : '0' },
+    });
+  };
 
   const fetchNotifications = async () => {
     try {
@@ -64,16 +109,26 @@ export default function NotificationsScreen() {
         data={notifications}
         keyExtractor={(_, i) => i.toString()}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); fetchNotifications(); }} />}
-        renderItem={({ item }) => (
-          <View style={styles.notifItem}>
+        renderItem={({ item }) => {
+          const pushData = parsePushData(item.pushData);
+          const preview = stripHtml(pushData.reply || pushData.comment || item.message || '');
+          const canOpen = Boolean(pushData.postId);
+          return (
+          <TouchableOpacity
+            style={styles.notifItem}
+            onPress={() => openNotificationTarget(item)}
+            disabled={!canOpen}
+            activeOpacity={0.75}
+          >
             <View style={styles.notifDot} />
             <View style={{ flex: 1 }}>
               <Text style={styles.notifTitle}>{item.title || 'Notification'}</Text>
-              <Text style={styles.notifMessage}>{item.message || ''}</Text>
+              <Text style={styles.notifMessage}>{preview}</Text>
               {item.date && <Text style={styles.notifTime}>{formatTimeAgo(item.date)}</Text>}
             </View>
-          </View>
-        )}
+          </TouchableOpacity>
+        );
+        }}
         ListEmptyComponent={<Text style={styles.empty}>No notifications yet.</Text>}
       />
     </View>

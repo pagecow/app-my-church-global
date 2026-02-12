@@ -1,7 +1,7 @@
-import React, { useEffect, useState, useCallback } from 'react';
-import { StyleSheet, View, Text, Image, TouchableOpacity, ActivityIndicator, FlatList, RefreshControl, TextInput } from 'react-native';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { AppState, AppStateStatus, StyleSheet, View, Text, Image, TouchableOpacity, ActivityIndicator, FlatList, RefreshControl } from 'react-native';
 import { useAuth } from '../../context/AuthContext';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { PostCard } from '../../components/PostCard';
@@ -10,6 +10,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 
 const API_URL = 'https://appmychurch.com/api/v1';
 const PAGE_SIZE = 10;
+const BACKGROUND_REFRESH_MS = 5 * 60 * 1000;
 
 export default function HomeScreen() {
   const { user, token, appData, isLoading: authLoading } = useAuth();
@@ -20,6 +21,10 @@ export default function HomeScreen() {
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const router = useRouter();
+  const appStateRef = useRef<AppStateStatus>(AppState.currentState);
+  const backgroundAtRef = useRef<number | null>(null);
+  const canLoadMoreOnEndReachedRef = useRef(false);
+  const loadMoreInFlightRef = useRef(false);
 
   useEffect(() => {
     if (!authLoading) {
@@ -28,16 +33,64 @@ export default function HomeScreen() {
     }
   }, [authLoading, token]);
 
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'background' || nextState === 'inactive') {
+        backgroundAtRef.current = Date.now();
+      }
+
+      const wasBackground =
+        appStateRef.current === 'background' || appStateRef.current === 'inactive';
+
+      if (wasBackground && nextState === 'active') {
+        const backgroundAt = backgroundAtRef.current;
+        const wasAwayLongEnough =
+          backgroundAt !== null && Date.now() - backgroundAt >= BACKGROUND_REFRESH_MS;
+
+        if (wasAwayLongEnough && token && !authLoading) {
+          setIsRefreshing(true);
+          fetchPosts(1, true);
+        }
+
+        backgroundAtRef.current = null;
+      }
+
+      appStateRef.current = nextState;
+    });
+
+    return () => subscription.remove();
+  }, [token, authLoading]);
+
+  useFocusEffect(
+    useCallback(() => {
+      const refreshIfNeeded = async () => {
+        const shouldRefresh = await AsyncStorage.getItem('needsHomeRefresh');
+        if (shouldRefresh === '1' && token) {
+          await AsyncStorage.removeItem('needsHomeRefresh');
+          setIsRefreshing(true);
+          fetchPosts(1, true);
+        }
+      };
+
+      refreshIfNeeded();
+    }, [token])
+  );
+
   const checkInitialState = async () => {
     router.replace('/find-church');
   };
 
   const fetchPosts = async (pageNum: number, reset: boolean) => {
+    if (!reset && loadMoreInFlightRef.current) return;
     const appId = await AsyncStorage.getItem('appId');
     if (!appId) { setIsPostsLoading(false); router.replace('/find-church'); return; }
     try {
-      if (reset) setIsPostsLoading(true);
-      else setIsLoadingMore(true);
+      if (reset) {
+        setIsPostsLoading(true);
+      } else {
+        loadMoreInFlightRef.current = true;
+        setIsLoadingMore(true);
+      }
       const response = await axios.get(`${API_URL}/posts?appId=${appId}&page=${pageNum}&limit=${PAGE_SIZE}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -45,7 +98,11 @@ export default function HomeScreen() {
       if (reset) {
         setPosts(data);
       } else {
-        setPosts((prev) => [...prev, ...data]);
+        setPosts((prev) => {
+          const existingIds = new Set(prev.map((p: any) => String(p.id)));
+          const nextRows = data.filter((row: any) => !existingIds.has(String(row.id)));
+          return [...prev, ...nextRows];
+        });
       }
       setPage(pageNum);
       setHasMore(data.length === PAGE_SIZE);
@@ -55,15 +112,22 @@ export default function HomeScreen() {
       setIsPostsLoading(false);
       setIsLoadingMore(false);
       setIsRefreshing(false);
+      if (!reset) loadMoreInFlightRef.current = false;
     }
   };
 
-  const onRefresh = () => { setIsRefreshing(true); fetchPosts(1, true); };
+  const onRefresh = () => {
+    canLoadMoreOnEndReachedRef.current = false;
+    setIsRefreshing(true);
+    fetchPosts(1, true);
+  };
 
   const onEndReached = () => {
-    if (!isLoadingMore && hasMore) {
-      fetchPosts(page + 1, false);
-    }
+    if (!canLoadMoreOnEndReachedRef.current) return;
+    if (isPostsLoading || isRefreshing || isLoadingMore || !hasMore) return;
+
+    canLoadMoreOnEndReachedRef.current = false;
+    fetchPosts(page + 1, false);
   };
 
   const handleShare = () => {
@@ -91,9 +155,12 @@ export default function HomeScreen() {
                 <Text style={styles.avatarText}>{(user?.name || '?')[0].toUpperCase()}</Text>
               </View>
             )}
-            <View style={styles.postBarInputWrapper}>
+            <TouchableOpacity
+              style={styles.postBarInputWrapper}
+              onPress={() => router.push('/create-post')}
+            >
               <Text style={styles.postBarPlaceholder}>Add a post</Text>
-            </View>
+            </TouchableOpacity>
             <TouchableOpacity onPress={handleShare}>
               <MaterialIcons name="share" size={28} color="#333" />
             </TouchableOpacity>
@@ -124,12 +191,20 @@ export default function HomeScreen() {
       <Navbar />
       <FlatList
         data={posts}
-        renderItem={({ item }) => <PostCard post={item} userId={user?.id || ''} token={token} />}
-        keyExtractor={(item) => item.id}
+        renderItem={({ item }) => (
+          <PostCard post={item} userId={user?.id || ''} token={token} isAdmin={Boolean(user?.is_admin)} />
+        )}
+        keyExtractor={(item) => String(item.id)}
         refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} />}
         ListHeaderComponent={ListHeader}
         ListFooterComponent={ListFooter}
         onEndReached={onEndReached}
+        onScrollBeginDrag={() => {
+          canLoadMoreOnEndReachedRef.current = true;
+        }}
+        onMomentumScrollBegin={() => {
+          canLoadMoreOnEndReachedRef.current = true;
+        }}
         onEndReachedThreshold={0.3}
         ListEmptyComponent={
           <View style={styles.emptyContainer}>

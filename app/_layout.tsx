@@ -11,6 +11,8 @@ export default function RootLayout() {
         <Stack.Screen name="find-church" />
         <Stack.Screen name="profile" />
         <Stack.Screen name="about" />
+        <Stack.Screen name="notification-thread" />
+        <Stack.Screen name="create-post" />
       </Stack>
     </AuthProvider>
   );
