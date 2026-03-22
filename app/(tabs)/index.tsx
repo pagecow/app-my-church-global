@@ -77,7 +77,8 @@ export default function HomeScreen() {
   );
 
   const checkInitialState = async () => {
-    router.replace('/find-church');
+    const appId = await AsyncStorage.getItem('appId');
+    router.replace(appId ? '/login' : '/find-church');
   };
 
   const fetchPosts = async (pageNum: number, reset: boolean) => {

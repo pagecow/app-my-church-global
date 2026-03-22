@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Alert, StyleSheet, View, Text, Image, TouchableOpacity, Modal, FlatList, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
+import { Alert, StyleSheet, View, Text, Image, TouchableOpacity, Pressable, Modal, FlatList, TextInput, Platform, Keyboard, Dimensions, Linking } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
+import { VideoView, useVideoPlayer } from 'expo-video';
 import axios from 'axios';
 
 // Local prayer hand images
@@ -17,6 +18,8 @@ interface PostCardProps {
 }
 
 const API_URL = 'https://appmychurch.com/api/v1';
+const SCREEN_WIDTH = Dimensions.get('window').width;
+const LINK_PREVIEW_API = 'https://api.microlink.io';
 
 const formatTimeDifference = (dateStr: string) => {
   const now = new Date();
@@ -48,6 +51,70 @@ const stripHtml = (html: string) => {
     .trim();
 };
 
+const URL_REGEX = /((https?:\/\/|www\.)[^\s]+)/i;
+
+const extractFirstUrl = (text: string) => {
+  if (!text) return null;
+  const match = text.match(URL_REGEX);
+  if (!match?.[0]) return null;
+  const rawUrl = match[0].trim();
+  return /^https?:\/\//i.test(rawUrl) ? rawUrl : `https://${rawUrl}`;
+};
+
+interface LinkPreviewData {
+  title: string;
+  description: string;
+  siteName: string;
+}
+
+const linkPreviewCache = new Map<string, LinkPreviewData | null>();
+
+const getHostFromUrl = (url: string) => {
+  try {
+    return new URL(url).hostname.replace(/^www\./i, '');
+  } catch {
+    return url;
+  }
+};
+
+const fetchLinkPreviewMetadata = async (url: string): Promise<LinkPreviewData | null> => {
+  if (linkPreviewCache.has(url)) return linkPreviewCache.get(url) ?? null;
+
+  try {
+    const endpoint = `${LINK_PREVIEW_API}?url=${encodeURIComponent(url)}&meta=true&screenshot=false&audio=false&video=false`;
+    const response = await axios.get(endpoint, { timeout: 9000 });
+    const payload = response.data?.data;
+
+    const preview: LinkPreviewData | null = payload
+      ? {
+          title: payload.title || getHostFromUrl(url),
+          description: payload.description || '',
+          siteName: payload.publisher || getHostFromUrl(url),
+        }
+      : null;
+
+    linkPreviewCache.set(url, preview);
+    return preview;
+  } catch {
+    linkPreviewCache.set(url, null);
+    return null;
+  }
+};
+
+function InlinePostVideo({ uri, style }: { uri: string; style: any }) {
+  const player = useVideoPlayer(uri, (player) => {
+    player.loop = false;
+  });
+
+  useEffect(() => {
+    player.pause();
+    return () => player.pause();
+  }, [player, uri]);
+
+  return <VideoView player={player} style={style} contentFit="contain" nativeControls />;
+}
+
+
 export const PostCard: React.FC<PostCardProps> = ({
   post,
   userId,
@@ -56,6 +123,12 @@ export const PostCard: React.FC<PostCardProps> = ({
   initialOpenComments = false,
   initialFocusCommentId = null,
 }) => {
+  const initialPostComments = Array.isArray(post.comment) ? post.comment : [];
+  const initialReplyCount = initialPostComments.reduce((sum: number, item: any) => {
+    if (typeof item?._count?.replies === 'number') return sum + item._count.replies;
+    if (Array.isArray(item?.replies)) return sum + item.replies.length;
+    return item?.parentId ? sum + 1 : sum;
+  }, 0);
   const [liked, setLiked] = useState(post.likes?.some((l: any) => l.church_userId === userId) || false);
   const [hearted, setHearted] = useState(post.post_heart?.some((h: any) => h.church_userId === userId) || false);
   const [prayed, setPrayed] = useState(post.post_praying?.some((p: any) => p.church_userId === userId) || false);
@@ -63,6 +136,7 @@ export const PostCard: React.FC<PostCardProps> = ({
   const [heartCount, setHeartCount] = useState(post.post_heart?.length || 0);
   const [prayCount, setPrayCount] = useState(post.post_praying?.length || 0);
   const [commentCount, setCommentCount] = useState(post.comment?.length || 0);
+  const [replyCount, setReplyCount] = useState(initialReplyCount);
   const [postContent, setPostContent] = useState(stripHtml(post.content || ''));
   const [postDeleted, setPostDeleted] = useState(false);
   const [showComments, setShowComments] = useState(false);
@@ -81,10 +155,66 @@ export const PostCard: React.FC<PostCardProps> = ({
   const [showReplyThread, setShowReplyThread] = useState(false);
   const [activeParentComment, setActiveParentComment] = useState<any>(null);
   const [loadingReplies, setLoadingReplies] = useState(false);
+  const [postImageAspectRatio, setPostImageAspectRatio] = useState(4 / 3);
+  const [activeMediaIndex, setActiveMediaIndex] = useState(0);
+  const [viewerVisible, setViewerVisible] = useState(false);
+  const [viewerIndex, setViewerIndex] = useState(0);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const [isSubmittingComment, setIsSubmittingComment] = useState(false);
+  const [linkPreview, setLinkPreview] = useState<LinkPreviewData | null>(null);
+  const [linkPreviewLoading, setLinkPreviewLoading] = useState(false);
   const commentsListRef = useRef<FlatList<any>>(null);
+  const galleryRef = useRef<FlatList<any>>(null);
+  const fullscreenRef = useRef<FlatList<any>>(null);
   const autoOpenedRef = useRef(false);
 
   const headers = { Authorization: `Bearer ${token}` };
+  const mediaItems = (post?.post_media || []).filter((m: any) => m?.media_url);
+  const imageMedia = mediaItems.filter(
+    (m: any) => !m?.media_type || String(m.media_type).startsWith('image/')
+  );
+  const activeMedia = mediaItems[activeMediaIndex];
+  const activeImageUrl =
+    activeMedia?.media_url &&
+    (!activeMedia?.media_type || String(activeMedia.media_type).startsWith('image/'))
+      ? activeMedia.media_url
+      : undefined;
+
+  useEffect(() => {
+    if (!activeImageUrl) return;
+
+    Image.getSize(
+      activeImageUrl,
+      (width, height) => {
+        if (width > 0 && height > 0) setPostImageAspectRatio(width / height);
+      },
+      () => setPostImageAspectRatio(4 / 3)
+    );
+  }, [activeImageUrl]);
+
+  useEffect(() => {
+    if (!viewerVisible) return;
+    const id = setTimeout(() => {
+      fullscreenRef.current?.scrollToIndex({ index: viewerIndex, animated: false });
+    }, 0);
+    return () => clearTimeout(id);
+  }, [viewerVisible, viewerIndex]);
+
+  useEffect(() => {
+    const showEvt = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvt = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+
+    const showSub = Keyboard.addListener(showEvt, (event) => {
+      const h = event.endCoordinates?.height || 0;
+      setKeyboardHeight(h);
+    });
+    const hideSub = Keyboard.addListener(hideEvt, () => setKeyboardHeight(0));
+
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
 
   const handleLike = async () => {
     const was = liked;
@@ -216,10 +346,15 @@ export const PostCard: React.FC<PostCardProps> = ({
     setShowComments(true);
     setLoadingComments(true);
     try {
-      const res = await axios.get(`${API_URL}/posts/${post.id}/comments`, { headers });
-      const rows = Array.isArray(res.data) ? res.data : [];
+      const commentsRes = await axios.get(`${API_URL}/posts/${post.id}/comments`, { headers });
+      const rows = Array.isArray(commentsRes.data) ? commentsRes.data : [];
       setComments(rows);
       setCommentCount(rows.length);
+      const totalReplies = rows.reduce(
+        (sum: number, row: any) => sum + (Array.isArray(row?.replies) ? row.replies.length : 0),
+        0
+      );
+      setReplyCount(totalReplies);
     } catch (e) { console.error(e); }
     finally { setLoadingComments(false); }
   };
@@ -242,8 +377,10 @@ export const PostCard: React.FC<PostCardProps> = ({
   }, [initialFocusCommentId, comments]);
 
   const sendComment = async (parentId?: string) => {
+    if (isSubmittingComment) return;
     const draft = parentId ? replyText : newComment;
     if (!draft.trim()) return;
+    setIsSubmittingComment(true);
     try {
       const res = await axios.post(
         `${API_URL}/posts/${post.id}/comments`,
@@ -274,16 +411,25 @@ export const PostCard: React.FC<PostCardProps> = ({
         });
         setReplyText('');
         setReplyingToCommentId(null);
+        setReplyCount((c) => c + 1);
       } else {
         setComments((prev) => [...prev, { ...res.data, replies: [], _count: { replies: 0 } }]);
         setNewComment('');
         setCommentCount((c) => c + 1);
       }
     } catch (e) { console.error(e); }
+    finally { setIsSubmittingComment(false); }
+  };
+
+  const handleSendPress = () => {
+    const parentCommentId = showReplyThread ? activeParentComment?.id : undefined;
+    sendComment(parentCommentId);
   };
 
   const isLong = postContent.length > 150;
   const displayContent = expanded || !isLong ? postContent : `${postContent.substring(0, 150)}...`;
+  const sharedUrl = extractFirstUrl(postContent);
+  const sharedHost = sharedUrl ? getHostFromUrl(sharedUrl) : '';
 
   const profilePic = post.church_users?.profile_picture_url;
   const postOwnerId = post.church_users?.id || post.church_user_id;
@@ -373,27 +519,42 @@ export const PostCard: React.FC<PostCardProps> = ({
       await axios.delete(`${API_URL}/posts/${post.id}/comments/${commentId}`, { headers });
       setComments((prev) => {
         let removedTopLevel = false;
+        let removedTopLevelReplies = 0;
+        let removedReply = false;
         const withoutTopLevel = prev.filter((c) => {
           const keep = c.id !== commentId;
-          if (!keep) removedTopLevel = true;
+          if (!keep) {
+            removedTopLevel = true;
+            removedTopLevelReplies = Array.isArray(c.replies) ? c.replies.length : 0;
+          }
           return keep;
         });
 
         if (removedTopLevel) {
           setCommentCount((c) => Math.max(0, c - 1));
+          if (removedTopLevelReplies > 0) {
+            setReplyCount((c) => Math.max(0, c - removedTopLevelReplies));
+          }
           return withoutTopLevel;
         }
 
-        return withoutTopLevel.map((comment) => {
+        const mapped = withoutTopLevel.map((comment) => {
           const before = (comment.replies || []).length;
           const nextReplies = (comment.replies || []).filter((r: any) => r.id !== commentId);
           if (before === nextReplies.length) return comment;
+          removedReply = true;
           return {
             ...comment,
             replies: nextReplies,
             _count: { ...(comment._count || {}), replies: nextReplies.length },
           };
         });
+
+        if (removedReply) {
+          setReplyCount((c) => Math.max(0, c - 1));
+        }
+
+        return mapped;
       });
       setActiveParentComment((prev: any) => {
         if (!prev) return null;
@@ -504,6 +665,48 @@ export const PostCard: React.FC<PostCardProps> = ({
     return parentComment?.church_user?.name || 'this comment';
   };
 
+  const formatCountLabel = (count: number, singular: string, plural: string) =>
+    `${count} ${count === 1 ? singular : plural}`;
+  const totalCommentCount = commentCount + replyCount;
+
+  const openExternalLink = async (url: string) => {
+    try {
+      const supported = await Linking.canOpenURL(url);
+      if (!supported) {
+        Alert.alert('Unable to open link', 'This link is not supported on your device.');
+        return;
+      }
+      await Linking.openURL(url);
+    } catch (error) {
+      Alert.alert('Unable to open link', 'Please try again.');
+    }
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!sharedUrl) {
+      setLinkPreview(null);
+      setLinkPreviewLoading(false);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    setLinkPreviewLoading(true);
+    fetchLinkPreviewMetadata(sharedUrl)
+      .then((data) => {
+        if (!cancelled) setLinkPreview(data);
+      })
+      .finally(() => {
+        if (!cancelled) setLinkPreviewLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [sharedUrl]);
+
   return (
     <View style={styles.card}>
       <View style={styles.header}>
@@ -525,7 +728,13 @@ export const PostCard: React.FC<PostCardProps> = ({
 
       {postContent ? (
         <View>
-          <Text style={styles.content}>{displayContent}</Text>
+          <TextInput
+            style={[styles.content, styles.readOnlySelectableText]}
+            value={displayContent}
+            editable={false}
+            multiline
+            scrollEnabled={false}
+          />
           {isLong && (
             <TouchableOpacity onPress={() => setExpanded(!expanded)}>
               <Text style={styles.readMore}>{expanded ? 'Read Less...' : 'Read More...'}</Text>
@@ -534,8 +743,70 @@ export const PostCard: React.FC<PostCardProps> = ({
         </View>
       ) : null}
 
-      {post.post_media && post.post_media.length > 0 && post.post_media[0].media_url && (
-        <Image source={{ uri: post.post_media[0].media_url }} style={styles.postImage} resizeMode="cover" />
+      {sharedUrl ? (
+        <TouchableOpacity style={styles.linkPreviewCard} onPress={() => openExternalLink(sharedUrl)} activeOpacity={0.85}>
+          <View style={styles.linkPreviewTextWrap}>
+            <Text style={styles.linkPreviewLabel} numberOfLines={1}>
+              {linkPreview?.siteName || sharedHost || 'Shared Link'}
+            </Text>
+            <Text style={styles.linkPreviewTitle} numberOfLines={2}>
+              {linkPreview?.title || sharedUrl}
+            </Text>
+            {linkPreviewLoading ? (
+              <Text style={styles.linkPreviewHint}>Loading preview...</Text>
+            ) : linkPreview?.description ? (
+              <Text style={styles.linkPreviewDescription} numberOfLines={2}>{linkPreview.description}</Text>
+            ) : null}
+            <Text style={styles.linkPreviewHint}>Tap to open</Text>
+          </View>
+        </TouchableOpacity>
+      ) : null}
+
+      {mediaItems.length > 0 && (
+        <View style={styles.galleryWrap}>
+          <FlatList
+            ref={galleryRef}
+            data={mediaItems}
+            horizontal
+            pagingEnabled
+            showsHorizontalScrollIndicator={false}
+            keyExtractor={(item, index) => `${item.id || item.media_url}-${index}`}
+            onMomentumScrollEnd={(event) => {
+              const index = Math.round(event.nativeEvent.contentOffset.x / SCREEN_WIDTH);
+              setActiveMediaIndex(index);
+            }}
+            renderItem={({ item, index }) => (
+              item.media_type?.startsWith('video/') ? (
+                <View style={styles.postVideoWrap}>
+                  <InlinePostVideo uri={item.media_url} style={styles.postVideo} />
+                </View>
+              ) : (
+                <TouchableOpacity
+                  activeOpacity={0.95}
+                  onPress={() => {
+                    const imageIndex = imageMedia.findIndex((media: any) => media.media_url === item.media_url);
+                    if (imageIndex < 0) return;
+                    setViewerIndex(imageIndex);
+                    setViewerVisible(true);
+                  }}
+                >
+                  <Image
+                    source={{ uri: item.media_url }}
+                    style={[styles.postImage, { aspectRatio: postImageAspectRatio }]}
+                    resizeMode="contain"
+                  />
+                </TouchableOpacity>
+              )
+            )}
+          />
+          {mediaItems.length > 1 ? (
+            <View style={styles.galleryDots}>
+              {mediaItems.map((_: any, idx: number) => (
+                <View key={`dot-${idx}`} style={[styles.dot, idx === activeMediaIndex && styles.dotActive]} />
+              ))}
+            </View>
+          ) : null}
+        </View>
       )}
 
       {/* Counts row */}
@@ -545,9 +816,11 @@ export const PostCard: React.FC<PostCardProps> = ({
           {heartCount > 0 && <Text style={styles.countText}>{heartCount} hearts</Text>}
           {prayCount > 0 && <Text style={styles.countText}>{prayCount} praying</Text>}
         </View>
-        {commentCount > 0 && (
+        {totalCommentCount > 0 && (
           <TouchableOpacity onPress={openComments}>
-            <Text style={styles.countText}>{commentCount} comments</Text>
+            <Text style={styles.countText}>
+              {formatCountLabel(totalCommentCount, 'comment', 'comments')}
+            </Text>
           </TouchableOpacity>
         )}
       </View>
@@ -570,7 +843,7 @@ export const PostCard: React.FC<PostCardProps> = ({
       </View>
       {/* Comment / Reply Modal */}
       <Modal visible={showComments || showReplyThread} animationType="slide" presentationStyle="pageSheet">
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
+        <View style={{ flex: 1 }}>
           <View style={styles.commentModal}>
             <View style={styles.commentHeader}>
               {showReplyThread ? (
@@ -598,6 +871,7 @@ export const PostCard: React.FC<PostCardProps> = ({
 
             {showReplyThread && activeParentComment ? (
               <FlatList
+                keyboardShouldPersistTaps="always"
                 data={activeParentComment.replies || []}
                 keyExtractor={(item) => item.id}
                 ListHeaderComponent={() => (
@@ -615,7 +889,13 @@ export const PostCard: React.FC<PostCardProps> = ({
                           <Text style={styles.commentUser}>@{activeParentComment.church_user?.name}</Text>
                           <Text style={styles.commentTime}>{formatTimeDifference(activeParentComment.createdAt)}</Text>
                         </View>
-                        <Text style={styles.commentContent}>{stripHtml(activeParentComment.content || '')}</Text>
+                        <TextInput
+                          style={[styles.commentContent, styles.readOnlySelectableText]}
+                          value={stripHtml(activeParentComment.content || '')}
+                          editable={false}
+                          multiline
+                          scrollEnabled={false}
+                        />
                       </View>
                     </View>
                   </View>
@@ -642,7 +922,13 @@ export const PostCard: React.FC<PostCardProps> = ({
                             <MaterialIcons name="more-vert" size={16} color="#555" />
                           </TouchableOpacity>
                         </View>
-                        <Text style={styles.commentContent}>{stripHtml(item.content || '')}</Text>
+                        <TextInput
+                          style={[styles.commentContent, styles.readOnlySelectableText]}
+                          value={stripHtml(item.content || '')}
+                          editable={false}
+                          multiline
+                          scrollEnabled={false}
+                        />
                         <View style={styles.commentReactions}>
                           <View style={styles.reactionItem}>
                             <TouchableOpacity onPress={() => handleCommentLike(item.id, true)}>
@@ -672,6 +958,7 @@ export const PostCard: React.FC<PostCardProps> = ({
             ) : (
               <FlatList
                 ref={commentsListRef}
+                keyboardShouldPersistTaps="always"
                 data={comments}
                 keyExtractor={(item) => item.id}
                 onScrollToIndexFailed={() => {}}
@@ -699,7 +986,13 @@ export const PostCard: React.FC<PostCardProps> = ({
                             <MaterialIcons name="more-vert" size={18} color="#555" />
                           </TouchableOpacity>
                         </View>
-                        <Text style={styles.commentContent}>{commentText}</Text>
+                        <TextInput
+                          style={[styles.commentContent, styles.readOnlySelectableText]}
+                          value={commentText}
+                          editable={false}
+                          multiline
+                          scrollEnabled={false}
+                        />
 
                         <View style={styles.commentMetaRow}>
                           <View style={styles.commentReactions}>
@@ -740,7 +1033,7 @@ export const PostCard: React.FC<PostCardProps> = ({
               />
             )}
 
-            <View style={styles.commentInputRow}>
+            <View style={[styles.commentInputRow, keyboardHeight > 0 ? { paddingBottom: keyboardHeight + 30 } : null]}>
               <TextInput
                 style={styles.commentInput}
                 placeholder={showReplyThread ? 'Add a reply...' : 'Write a comment...'}
@@ -748,12 +1041,14 @@ export const PostCard: React.FC<PostCardProps> = ({
                 onChangeText={showReplyThread ? setReplyText : setNewComment}
                 multiline
               />
-              <TouchableOpacity
-                onPress={() => showReplyThread ? sendComment(activeParentComment?.id) : sendComment()}
+              <Pressable
+                onPressIn={handleSendPress}
+                disabled={isSubmittingComment}
+                hitSlop={{ top: 12, right: 12, bottom: 12, left: 12 }}
                 style={styles.sendBtn}
               >
                 <MaterialIcons name="send" size={24} color="#3b82f6" />
-              </TouchableOpacity>
+              </Pressable>
             </View>
 
             {showEditCommentModal && (
@@ -785,7 +1080,7 @@ export const PostCard: React.FC<PostCardProps> = ({
               </View>
             )}
           </View>
-        </KeyboardAvoidingView>
+        </View>
       </Modal>
 
       <Modal visible={showEditModal} transparent animationType="fade">
@@ -811,6 +1106,35 @@ export const PostCard: React.FC<PostCardProps> = ({
         </View>
       </Modal>
 
+      <Modal visible={viewerVisible} animationType="fade" onRequestClose={() => setViewerVisible(false)}>
+        <View style={styles.viewerContainer}>
+          <View style={styles.viewerHeader}>
+            <Text style={styles.viewerCount}>{viewerIndex + 1} / {imageMedia.length}</Text>
+            <TouchableOpacity onPress={() => setViewerVisible(false)}>
+              <MaterialIcons name="close" size={28} color="#fff" />
+            </TouchableOpacity>
+          </View>
+          <FlatList
+            ref={fullscreenRef}
+            data={imageMedia}
+            horizontal
+            pagingEnabled
+            keyExtractor={(item, index) => `full-${item.id || item.media_url}-${index}`}
+            getItemLayout={(_, index) => ({ length: SCREEN_WIDTH, offset: SCREEN_WIDTH * index, index })}
+            initialScrollIndex={viewerIndex}
+            onMomentumScrollEnd={(event) => {
+              const index = Math.round(event.nativeEvent.contentOffset.x / SCREEN_WIDTH);
+              setViewerIndex(index);
+            }}
+            renderItem={({ item }) => (
+              <View style={styles.viewerPage}>
+                <Image source={{ uri: item.media_url }} style={styles.viewerImage} resizeMode="contain" />
+              </View>
+            )}
+          />
+        </View>
+      </Modal>
+
     </View>
   );
 };
@@ -827,7 +1151,34 @@ const styles = StyleSheet.create({
   timeAgo: { color: '#666', fontSize: 12 },
   content: { fontSize: 15, lineHeight: 21, paddingHorizontal: 12, marginBottom: 8 },
   readMore: { color: '#3b82f6', fontSize: 13, paddingHorizontal: 12, marginBottom: 8 },
-  postImage: { width: '100%', height: 300, marginBottom: 8 },
+  linkPreviewCard: {
+    marginHorizontal: 12,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    borderRadius: 10,
+    backgroundColor: '#ffffff',
+    padding: 10,
+  },
+  linkPreviewTextWrap: { flex: 1 },
+  linkPreviewLabel: { fontSize: 12, color: '#2563eb', fontWeight: '700' },
+  linkPreviewTitle: { fontSize: 13, color: '#1f2937', marginTop: 2, fontWeight: '600' },
+  linkPreviewDescription: { fontSize: 12, color: '#4b5563', marginTop: 2 },
+  linkPreviewHint: { fontSize: 12, color: '#6b7280', marginTop: 2 },
+  galleryWrap: { marginBottom: 8 },
+  postImage: { width: SCREEN_WIDTH, backgroundColor: '#000' },
+  postVideoWrap: { width: SCREEN_WIDTH, backgroundColor: '#000' },
+  postVideo: { width: SCREEN_WIDTH, aspectRatio: 16 / 9, backgroundColor: '#000' },
+  galleryDots: {
+    position: 'absolute',
+    bottom: 10,
+    width: '100%',
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.55)' },
+  dotActive: { backgroundColor: '#fff', width: 8, height: 8, borderRadius: 4 },
   countsRow: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 12, marginBottom: 4 },
   countsLeft: { flexDirection: 'row', gap: 12 },
   countText: { color: '#666', fontSize: 13 },
@@ -871,11 +1222,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     paddingHorizontal: 12,
     paddingTop: 10,
-    paddingBottom: Platform.OS === 'ios' ? 40 : 25,
+    paddingBottom: Platform.OS === 'ios' ? 36 : 24,
     borderTopWidth: 1,
     borderTopColor: '#eee',
     alignItems: 'flex-end',
-    flexWrap: 'wrap',
   },
   replyingBanner: {
     width: '100%',
@@ -887,7 +1237,11 @@ const styles = StyleSheet.create({
   replyingText: { color: '#666', fontSize: 12 },
   replyingCancel: { color: '#ef4444', fontSize: 12, fontWeight: '600' },
   commentInput: { flex: 1, borderWidth: 1, borderColor: '#ddd', borderRadius: 20, paddingHorizontal: 16, paddingVertical: 10, fontSize: 15, maxHeight: 100 },
-  sendBtn: { marginLeft: 8, padding: 8 },
+  readOnlySelectableText: {
+    includeFontPadding: false,
+    backgroundColor: 'transparent',
+  },
+  sendBtn: { marginLeft: 8, width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
   editOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'center', padding: 20 },
   inlineEditOverlay: {
     position: 'absolute',
@@ -905,4 +1259,18 @@ const styles = StyleSheet.create({
   editActions: { marginTop: 12, flexDirection: 'row', justifyContent: 'flex-end', gap: 18 },
   editCancel: { color: '#666', fontSize: 15 },
   editSave: { color: '#007AFF', fontSize: 15, fontWeight: '700' },
+  viewerContainer: { flex: 1, backgroundColor: '#000' },
+  viewerHeader: {
+    position: 'absolute',
+    top: 50,
+    left: 16,
+    right: 16,
+    zIndex: 2,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  viewerCount: { color: '#fff', fontSize: 14, fontWeight: '600' },
+  viewerPage: { width: SCREEN_WIDTH, justifyContent: 'center', alignItems: 'center' },
+  viewerImage: { width: SCREEN_WIDTH, height: '100%' },
 });

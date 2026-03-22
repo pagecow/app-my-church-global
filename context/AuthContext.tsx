@@ -1,6 +1,7 @@
 import React, { createContext, useState, useEffect, useContext } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
+import { registerIndieID, unregisterIndieDevice } from 'native-notify';
 
 interface User {
   id: string;
@@ -26,6 +27,8 @@ interface AppData {
   google_app_store_link: string | null;
   canAllUsersPost: boolean;
   canAllUsersComment: boolean;
+  native_notify_app_id?: number;
+  native_notify_app_token?: string | null;
 }
 
 interface AuthContextType {
@@ -34,7 +37,7 @@ interface AuthContextType {
   token: string | null;
   isLoading: boolean;
   login: (email: string, password: string, appId: string) => Promise<void>;
-  signup: (data: { name: string; gender: string; birth_date: string; email: string; password: string; appId: string }) => Promise<void>;
+  signup: (data: { name: string; gender?: string; birth_date: string; email: string; password: string; appId: string }) => Promise<void>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
   setUser: React.Dispatch<React.SetStateAction<User | null>>;
@@ -43,6 +46,8 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 const API_URL = 'https://appmychurch.com/api/v1';
+const FALLBACK_NN_APP_ID = 23936;
+const FALLBACK_NN_APP_TOKEN = 'kqVaAXbDHXKd5tICC4dDQv';
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
@@ -50,7 +55,37 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [token, setToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
+  const clearStoredAuth = async () => {
+    await AsyncStorage.removeItem('accessToken');
+    await AsyncStorage.removeItem('userData');
+    setToken(null);
+    setUser(null);
+    setAppData(null);
+  };
+
   useEffect(() => { loadStoredData(); }, []);
+
+  useEffect(() => {
+    const registerSubscriptions = async () => {
+      const userSubId = user?.native_notify_indie_id;
+      const groupSubId = appData?.id;
+      if (!token || !userSubId || !groupSubId) return;
+
+      try {
+        const nnAppId = appData?.native_notify_app_id || FALLBACK_NN_APP_ID;
+        const nnAppToken = appData?.native_notify_app_token || FALLBACK_NN_APP_TOKEN;
+
+        await Promise.all([
+          registerIndieID(userSubId, nnAppId, nnAppToken),
+          registerIndieID(groupSubId, nnAppId, nnAppToken),
+        ]);
+      } catch (error) {
+        console.error('Native Notify registration failed:', error);
+      }
+    };
+
+    registerSubscriptions();
+  }, [token, user?.native_notify_indie_id, appData?.id]);
 
   const loadStoredData = async () => {
     try {
@@ -69,7 +104,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             native_notify_indie_id: fullUser.native_notify_indie_id,
           });
           if (fullUser.app) setAppData(fullUser.app);
-        } catch (e) { console.error('Failed to refresh user:', e); }
+        } catch (e: any) {
+          if (axios.isAxiosError(e) && e.response?.status === 401) {
+            await clearStoredAuth();
+          } else {
+            console.error('Failed to refresh user:', e);
+          }
+        }
       }
     } catch (error) { console.error('Failed to load auth data:', error); }
     finally { setIsLoading(false); }
@@ -88,7 +129,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setUser(u);
       await AsyncStorage.setItem('userData', JSON.stringify(u));
       if (fullUser.app) setAppData(fullUser.app);
-    } catch (e) { console.error('Refresh user error:', e); }
+    } catch (e: any) {
+      if (axios.isAxiosError(e) && e.response?.status === 401) {
+        await clearStoredAuth();
+      } else {
+        console.error('Refresh user error:', e);
+      }
+    }
   };
 
   const login = async (email: string, password: string, appId: string) => {
@@ -110,7 +157,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const signup = async (data: { name: string; gender: string; birth_date: string; email: string; password: string; appId: string }) => {
+  const signup = async (data: { name: string; gender?: string; birth_date: string; email: string; password: string; appId: string }) => {
     try {
       const response = await axios.post(`${API_URL}/signup`, data);
       const { accessToken, user: userData } = response.data;
@@ -130,11 +177,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const logout = async () => {
     try {
-      await AsyncStorage.removeItem('accessToken');
-      await AsyncStorage.removeItem('userData');
-      setToken(null);
-      setUser(null);
-      setAppData(null);
+      const userSubId = user?.native_notify_indie_id;
+      const groupSubId = appData?.id;
+      const nnAppId = appData?.native_notify_app_id || FALLBACK_NN_APP_ID;
+      const nnAppToken = appData?.native_notify_app_token || FALLBACK_NN_APP_TOKEN;
+
+      try {
+        if (userSubId) {
+          await unregisterIndieDevice(userSubId, nnAppId, nnAppToken);
+        }
+        if (groupSubId) {
+          await unregisterIndieDevice(groupSubId, nnAppId, nnAppToken);
+        }
+      } catch (error) {
+        console.error('Native Notify unregister failed:', error);
+      }
+
+      await clearStoredAuth();
     } catch (error) { console.error('Logout failed:', error); }
   };
 

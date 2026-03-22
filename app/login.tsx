@@ -9,7 +9,9 @@ import {
   KeyboardAvoidingView, 
   Platform,
   Image,
-  Alert
+  Alert,
+  ScrollView,
+  useWindowDimensions,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useAuth } from '../context/AuthContext';
@@ -17,6 +19,7 @@ import { useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export default function LoginScreen() {
+  const { height } = useWindowDimensions();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [appId, setAppId] = useState('');
@@ -62,6 +65,13 @@ export default function LoginScreen() {
     }
   };
 
+  const handleForgotPassword = async () => {
+    router.push({
+      pathname: '/forgot-password',
+      params: email ? { email: email.trim().toLowerCase() } : {},
+    });
+  };
+
   return (
     <KeyboardAvoidingView 
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -74,61 +84,71 @@ export default function LoginScreen() {
         <MaterialIcons name="arrow-back" size={28} color="#333" />
       </TouchableOpacity>
 
-      <View style={styles.innerContainer}>
-        <View style={styles.logoContainer}>
-          {churchLogo ? (
-            <Image 
-              source={{ uri: churchLogo }} 
-              style={styles.logo} 
-              resizeMode="contain"
-            />
-          ) : (
-            <Image 
-              source={require('../assets/icon.png')} 
-              style={styles.logo} 
-              resizeMode="contain"
-            />
-          )}
-          <Text style={styles.title}>{churchName}</Text>
-        </View>
-
-        <View style={styles.formContainer}>
-          <Text style={styles.label}>Email</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="Enter your email"
-            value={email}
-            onChangeText={setEmail}
-            autoCapitalize="none"
-            keyboardType="email-address"
-          />
-
-          <Text style={styles.label}>Password</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="Enter your password"
-            value={password}
-            onChangeText={setPassword}
-            secureTextEntry
-          />
-
-          <TouchableOpacity 
-            style={styles.button} 
-            onPress={handleLogin}
-            disabled={isLoggingIn}
-          >
-            {isLoggingIn ? (
-              <ActivityIndicator color="#fff" />
+      <ScrollView
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: Math.max(24, height * 0.25) }]}
+      >
+        <View style={styles.innerContainer}>
+          <View style={styles.logoContainer}>
+            {churchLogo ? (
+              <Image 
+                source={{ uri: churchLogo }} 
+                style={styles.logo} 
+                resizeMode="contain"
+              />
             ) : (
-              <Text style={styles.buttonText}>Login</Text>
+              <Image 
+                source={require('../assets/icon.png')} 
+                style={styles.logo} 
+                resizeMode="contain"
+              />
             )}
-          </TouchableOpacity>
+            <Text style={styles.title}>{churchName}</Text>
+          </View>
 
-          <TouchableOpacity onPress={() => router.push('/signup')} style={styles.switchLink}>
-            <Text style={styles.switchText}>Don't have an account? <Text style={styles.switchBold}>Sign up</Text></Text>
-          </TouchableOpacity>
+          <View style={styles.formContainer}>
+            <Text style={styles.label}>Email</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Enter your email"
+              value={email}
+              onChangeText={setEmail}
+              autoCapitalize="none"
+              keyboardType="email-address"
+            />
+
+            <Text style={styles.label}>Password</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Enter your password"
+              value={password}
+              onChangeText={setPassword}
+              secureTextEntry
+            />
+
+            <TouchableOpacity 
+              style={styles.button} 
+              onPress={handleLogin}
+              disabled={isLoggingIn}
+            >
+              {isLoggingIn ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.buttonText}>Login</Text>
+              )}
+            </TouchableOpacity>
+
+            <TouchableOpacity onPress={handleForgotPassword} style={styles.forgotBelowLogin}>
+              <Text style={styles.forgotText}>Forgot Password?</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity onPress={() => router.push('/signup')} style={styles.switchLink}>
+              <Text style={styles.switchText}>Don't have an account? <Text style={styles.switchBold}>Sign up</Text></Text>
+            </TouchableOpacity>
+          </View>
         </View>
-      </View>
+      </ScrollView>
     </KeyboardAvoidingView>
   );
 }
@@ -138,6 +158,10 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#fff',
   },
+  scrollContent: {
+    flexGrow: 1,
+    paddingTop: 90,
+  },
   backButton: {
     position: 'absolute',
     top: 55,
@@ -146,7 +170,6 @@ const styles = StyleSheet.create({
     padding: 10,
   },
   innerContainer: {
-    flex: 1,
     justifyContent: 'center',
     padding: 20,
   },
@@ -180,6 +203,15 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     fontSize: 16,
   },
+  forgotBelowLogin: {
+    alignItems: 'center',
+    marginTop: 16,
+  },
+  forgotText: {
+    color: '#007AFF',
+    fontSize: 14,
+    fontWeight: '600',
+  },
   button: {
     backgroundColor: '#007AFF', 
     padding: 15,
@@ -194,7 +226,7 @@ const styles = StyleSheet.create({
   },
   switchLink: {
     alignItems: 'center',
-    marginTop: 20,
+    marginTop: 10,
   },
   switchText: {
     color: '#666',

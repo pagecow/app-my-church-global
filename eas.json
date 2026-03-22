@@ -6,17 +6,20 @@
     "development": {
       "developmentClient": true,
       "distribution": "internal",
+      "environment": "development",
       "ios": {
         "image": "sdk-54"
       }
     },
     "preview": {
       "distribution": "internal",
+      "environment": "preview",
       "ios": {
-        "image": "sdnpk-54"
+        "image": "sdk-54"
       }
     },
     "production": {
+      "environment": "production",
       "ios": {
         "image": "sdk-54"
       }
