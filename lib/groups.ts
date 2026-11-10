@@ -80,6 +80,14 @@ const asArray = <T,>(payload: any): T[] => {
   return [];
 };
 
+export interface InvitableMember {
+  id: string;
+  name: string;
+  email: string | null;
+  profile_picture_url: string | null;
+  is_admin: boolean;
+}
+
 export const groupsApi = {
   async listGroups(token: string, appId: string): Promise<Group[]> {
     const res = await axios.get(`${API_URL}/groups?appId=${encodeURIComponent(appId)}`, {
@@ -151,6 +159,43 @@ export const groupsApi = {
       headers: authHeaders(token),
     });
     return asArray<GroupInvite>(res.data);
+  },
+
+  /**
+   * People this owner/admin may invite: active church members who are neither in
+   * the group nor already holding an unaccepted invite. An empty query returns a
+   * first page so the screen is never blank.
+   */
+  async searchInvitableMembers(
+    token: string,
+    groupId: string,
+    query?: string
+  ): Promise<InvitableMember[]> {
+    const suffix = query && query.trim() ? `?query=${encodeURIComponent(query.trim())}` : '';
+    const res = await axios.get(
+      `${API_URL}/groups/${groupId}/invitable-members${suffix}`,
+      { headers: authHeaders(token) }
+    );
+    return asArray<InvitableMember>(res.data);
+  },
+
+  /** Invite one named person. They get a notification; tapping it joins them. */
+  async inviteMember(token: string, groupId: string, churchUserId: string): Promise<GroupInvite> {
+    const res = await axios.post(
+      `${API_URL}/groups/${groupId}/invites`,
+      { churchUserId },
+      { headers: authHeaders(token) }
+    );
+    return res.data;
+  },
+
+  /** Accept a targeted invite by its id. Idempotent, same as the code path. */
+  async acceptInviteById(token: string, groupId: string, inviteId: string): Promise<void> {
+    await axios.post(
+      `${API_URL}/groups/${groupId}/invites/${inviteId}/accept`,
+      {},
+      { headers: authHeaders(token) }
+    );
   },
 
   async createInvite(
