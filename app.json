@@ -16,6 +16,9 @@
       "supportsTablet": true,
       "buildNumber": "1.2.0",
       "bundleIdentifier": "com.amc.appmychurchglobal",
+      "entitlements": {
+        "com.apple.developer.declared-age-range": true
+      },
       "infoPlist": {
         "NSCameraUsageDescription": "We need access to your camera if you choose to capture photos and/or videos for posts.",
         "NSMicrophoneUsageDescription": "We need access to your microphone to record videos if you choose to capture videos for posts.",

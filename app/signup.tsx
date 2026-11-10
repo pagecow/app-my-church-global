@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { StyleSheet, View, Text, TextInput, TouchableOpacity, ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, Image, Alert, useWindowDimensions } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useAuth } from '../context/AuthContext';
+import { checkDeclaredAge } from '../lib/ageRange';
 import { useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
@@ -96,6 +97,15 @@ export default function SignupScreen() {
       Alert.alert('Age Requirement', 'You must be at least 13 years old to sign up for this app.');
       return;
     }
+    // Apple's Declared Age Range check runs first: where the OS can answer, it
+    // settles the question without trusting a typed date. Where it cannot, it
+    // returns 'unknown' and the birth date above remains the gate.
+    const declaredAge = await checkDeclaredAge();
+    if (declaredAge === 'under-13') {
+      Alert.alert('Age Requirement', 'You must be at least 13 years old to sign up for this app.');
+      return;
+    }
+
     setIsLoading(true);
     try {
       const checkRes = await axios.post(`${API_URL}/signup/check-email`, { email, appId });
