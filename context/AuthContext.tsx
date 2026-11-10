@@ -27,6 +27,12 @@ interface AppData {
   google_app_store_link: string | null;
   canAllUsersPost: boolean;
   canAllUsersComment: boolean;
+  /**
+   * Server-controlled rollout flag for the Groups tab. Absent/false means the
+   * feature is dark-launched: the tab stays hidden and the Notifications tab
+   * keeps its old place in the bar.
+   */
+  groups_enabled?: boolean;
   native_notify_app_id?: number;
   native_notify_app_token?: string | null;
 }

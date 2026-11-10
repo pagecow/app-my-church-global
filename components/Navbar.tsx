@@ -1,16 +1,51 @@
-import React, { useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import { StyleSheet, View, Text, TouchableOpacity, Image, Modal, Alert } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useAuth } from '../context/AuthContext';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Clipboard from 'expo-clipboard';
+import axios from 'axios';
+
+const API_URL = 'https://appmychurch.com/api/v1';
 
 export default function Navbar() {
-  const { user, appData, logout } = useAuth();
+  const { user, appData, token, logout } = useAuth();
   const [drawerVisible, setDrawerVisible] = useState(false);
   const [copied, setCopied] = useState('');
+  const [unreadCount, setUnreadCount] = useState(0);
   const router = useRouter();
+
+  const groupsEnabled = Boolean(appData?.groups_enabled);
+  const nnSubId = user?.native_notify_indie_id;
+
+  /**
+   * The badge is fed by our own backend, not by a push receipt. A failed or
+   * missing endpoint just leaves the bell unbadged - it never blocks the header.
+   */
+  const refreshUnread = useCallback(async () => {
+    if (!groupsEnabled || !token || !nnSubId) {
+      setUnreadCount(0);
+      return;
+    }
+    try {
+      const res = await axios.get(
+        `${API_URL}/notifications/unread-count?nnSubId=${encodeURIComponent(nnSubId)}`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      const count =
+        typeof res.data === 'number' ? res.data : Number(res.data?.count ?? res.data?.unread ?? 0);
+      setUnreadCount(Number.isFinite(count) && count > 0 ? count : 0);
+    } catch {
+      setUnreadCount(0);
+    }
+  }, [groupsEnabled, token, nnSubId]);
+
+  useFocusEffect(
+    useCallback(() => {
+      refreshUnread();
+    }, [refreshUnread])
+  );
 
   const handleLogout = async () => {
     setDrawerVisible(false);
@@ -37,6 +72,21 @@ export default function Navbar() {
   return (
     <View style={styles.navbar}>
       <Text style={styles.churchName} numberOfLines={1}>{appData?.name || 'App My Church'}</Text>
+      {groupsEnabled ? (
+        <TouchableOpacity
+          style={styles.bellBtn}
+          onPress={() => router.push('/notifications')}
+          accessibilityLabel="Notifications"
+          accessibilityRole="button"
+        >
+          <MaterialIcons name="notifications" size={26} color="#333" />
+          {unreadCount > 0 ? (
+            <View style={styles.badge}>
+              <Text style={styles.badgeText}>{unreadCount > 9 ? '9+' : String(unreadCount)}</Text>
+            </View>
+          ) : null}
+        </TouchableOpacity>
+      ) : null}
       <TouchableOpacity onPress={() => setDrawerVisible(true)}>
         {profilePic ? (
           <Image source={{ uri: profilePic }} style={styles.avatar} />
@@ -97,6 +147,20 @@ export default function Navbar() {
 const styles = StyleSheet.create({
   navbar: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingTop: 55, paddingBottom: 12, paddingHorizontal: 16, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#eee' },
   churchName: { fontSize: 18, fontWeight: 'bold', flex: 1 },
+  bellBtn: { padding: 4, marginRight: 14 },
+  badge: {
+    position: 'absolute',
+    top: -2,
+    right: -4,
+    minWidth: 17,
+    height: 17,
+    borderRadius: 9,
+    backgroundColor: '#ef4444',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 4,
+  },
+  badgeText: { color: '#fff', fontSize: 10, fontWeight: '700' },
   avatar: { width: 36, height: 36, borderRadius: 18 },
   avatarFallback: { backgroundColor: '#3b82f6', justifyContent: 'center', alignItems: 'center' },
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },

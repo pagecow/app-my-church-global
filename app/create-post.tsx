@@ -14,7 +14,7 @@ import {
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { VideoView, useVideoPlayer } from 'expo-video';
-import { useFocusEffect, useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
@@ -43,6 +43,8 @@ function VideoPreviewTile({ uri }: { uri: string }) {
 export default function CreatePostScreen() {
   const router = useRouter();
   const { token, user, appData } = useAuth();
+  const params = useLocalSearchParams<{ groupId?: string }>();
+  const groupId = typeof params.groupId === 'string' ? params.groupId : '';
 
   const [content, setContent] = useState('');
   const [assets, setAssets] = useState<ImagePicker.ImagePickerAsset[]>([]);
@@ -167,7 +169,9 @@ export default function CreatePostScreen() {
         asset,
         fileName,
         mimeType,
-        bucket: (asset.type === 'video' ? 'amc_video_bucket' : 'amc_image_bucket') as const,
+        bucket: (asset.type === 'video' ? 'amc_video_bucket' : 'amc_image_bucket') as
+          | 'amc_video_bucket'
+          | 'amc_image_bucket',
       };
     });
 
@@ -233,8 +237,11 @@ export default function CreatePostScreen() {
       Alert.alert('Error', 'You must be logged in to post.');
       return;
     }
-    if (!canPost) {
-      Alert.alert('Not allowed', 'Posting is limited to admins in this group.');
+    // Posting rights inside a group depend on the member's role there, which
+    // only the server can decide. The church-wide gate must not block a group
+    // post, or a group owner who is not a church admin could not post.
+    if (!canPost && !groupId) {
+      Alert.alert('Not allowed', 'Posting is limited to admins in this church.');
       return;
     }
     if (!content.trim() && assets.length === 0) {
@@ -253,8 +260,11 @@ export default function CreatePostScreen() {
 
       const uploaded = await uploadMediaIfNeeded();
 
+      // A group post goes to its own route. It must never fall through to
+      // /posts, because that path sends the church-wide push.
+      const isGroupPost = Boolean(groupId);
       await axios.post(
-        `${API_URL}/posts`,
+        isGroupPost ? `${API_URL}/groups/${groupId}/posts` : `${API_URL}/posts`,
         {
           content: content.trim(),
           appId,
@@ -263,7 +273,11 @@ export default function CreatePostScreen() {
         { headers: { Authorization: `Bearer ${token}` } }
       );
 
-      await AsyncStorage.setItem('needsHomeRefresh', '1');
+      // Mutually exclusive: a group post may only refresh the group feed.
+      await AsyncStorage.setItem(
+        isGroupPost ? 'needsGroupsRefresh' : 'needsHomeRefresh',
+        '1'
+      );
       router.back();
     } catch (error: any) {
       console.error('Create post failed:', error?.response?.data || error?.message);

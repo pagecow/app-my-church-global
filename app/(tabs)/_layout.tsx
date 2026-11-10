@@ -7,7 +7,8 @@ import { useAuth } from '../../context/AuthContext';
 
 export default function TabLayout() {
   const router = useRouter();
-  const { token, isLoading } = useAuth();
+  const { token, isLoading, appData } = useAuth();
+  const groupsEnabled = Boolean(appData?.groups_enabled);
 
   useEffect(() => {
     const redirectIfSignedOut = async () => {
@@ -28,6 +29,19 @@ export default function TabLayout() {
           tabBarIcon: ({ color }) => <Ionicons name="home" size={26} color={color} />,
         }}
       />
+      {/*
+        Groups sits directly right of Home. It stays out of the tab bar entirely
+        until the server flips groups_enabled, so shipping this release changes
+        nothing for churches that have not been opted in.
+      */}
+      <Tabs.Screen
+        name="groups"
+        options={{
+          title: 'Groups',
+          href: groupsEnabled ? undefined : null,
+          tabBarIcon: ({ color }) => <MaterialIcons name="groups" size={28} color={color} />,
+        }}
+      />
       <Tabs.Screen
         name="videos"
         options={{
@@ -42,10 +56,16 @@ export default function TabLayout() {
           tabBarIcon: ({ color }) => <MaterialIcons name="event" size={28} color={color} />,
         }}
       />
+      {/*
+        Notifications moves to the Navbar bell once Groups is live. The route is
+        kept (href: null hides it from the bar but /notifications still resolves)
+        so the bell and any old deep links keep working.
+      */}
       <Tabs.Screen
         name="notifications"
         options={{
           title: 'Notifications',
+          href: groupsEnabled ? null : undefined,
           tabBarIcon: ({ color }) => <MaterialIcons name="notifications" size={28} color={color} />,
         }}
       />

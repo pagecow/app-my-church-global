@@ -1,145 +1,94 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { AppState, AppStateStatus, StyleSheet, View, Text, Image, TouchableOpacity, ActivityIndicator, FlatList, RefreshControl } from 'react-native';
+import React, { useCallback, useEffect, useState } from 'react';
+import {
+  ActivityIndicator,
+  FlatList,
+  Image,
+  RefreshControl,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import { useAuth } from '../../context/AuthContext';
 import { useFocusEffect, useRouter } from 'expo-router';
-import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { PostCard } from '../../components/PostCard';
 import Navbar from '../../components/Navbar';
 import { MaterialIcons } from '@expo/vector-icons';
+import { API_URL } from '../../lib/groups';
+import { usePaginatedPosts } from '../../hooks/usePaginatedPosts';
 
-const API_URL = 'https://appmychurch.com/api/v1';
-const PAGE_SIZE = 10;
-const BACKGROUND_REFRESH_MS = 5 * 60 * 1000;
+const REFRESH_KEY = 'needsHomeRefresh';
 
 export default function HomeScreen() {
   const { user, token, appData, isLoading: authLoading } = useAuth();
-  const [posts, setPosts] = useState<any[]>([]);
-  const [page, setPage] = useState(1);
-  const [hasMore, setHasMore] = useState(true);
-  const [isPostsLoading, setIsPostsLoading] = useState(true);
-  const [isLoadingMore, setIsLoadingMore] = useState(false);
-  const [isRefreshing, setIsRefreshing] = useState(false);
   const router = useRouter();
-  const appStateRef = useRef<AppStateStatus>(AppState.currentState);
-  const backgroundAtRef = useRef<number | null>(null);
-  const canLoadMoreOnEndReachedRef = useRef(false);
-  const loadMoreInFlightRef = useRef(false);
+
+  const [appId, setAppId] = useState<string | null>(null);
+  const [appIdLoaded, setAppIdLoaded] = useState(false);
 
   useEffect(() => {
-    if (!authLoading) {
-      if (!token) checkInitialState();
-      else fetchPosts(1, true);
-    }
-  }, [authLoading, token]);
+    AsyncStorage.getItem('appId')
+      .then((value) => {
+        setAppId(value);
+      })
+      .finally(() => setAppIdLoaded(true));
+  }, []);
 
   useEffect(() => {
-    const subscription = AppState.addEventListener('change', (nextState) => {
-      if (nextState === 'background' || nextState === 'inactive') {
-        backgroundAtRef.current = Date.now();
-      }
+    if (authLoading || !appIdLoaded || token) return;
+    router.replace(appId ? '/login' : '/find-church');
+  }, [authLoading, appIdLoaded, token, appId, router]);
 
-      const wasBackground =
-        appStateRef.current === 'background' || appStateRef.current === 'inactive';
+  // The home feed is church-wide: it never carries a groupId, and the backend
+  // filters on posts.group_id IS NULL. Group posts live at /groups/:id/posts.
+  const endpoint =
+    token && appId ? `${API_URL}/posts?appId=${encodeURIComponent(appId)}` : null;
 
-      if (wasBackground && nextState === 'active') {
-        const backgroundAt = backgroundAtRef.current;
-        const wasAwayLongEnough =
-          backgroundAt !== null && Date.now() - backgroundAt >= BACKGROUND_REFRESH_MS;
-
-        if (wasAwayLongEnough && token && !authLoading) {
-          setIsRefreshing(true);
-          fetchPosts(1, true);
-        }
-
-        backgroundAtRef.current = null;
-      }
-
-      appStateRef.current = nextState;
-    });
-
-    return () => subscription.remove();
-  }, [token, authLoading]);
+  const {
+    posts,
+    isPostsLoading,
+    isLoadingMore,
+    isRefreshing,
+    hasMore,
+    onRefresh,
+    onEndReached,
+    markScrollable,
+    consumeRefreshFlag,
+  } = usePaginatedPosts({
+    endpoint,
+    token,
+    refreshKey: REFRESH_KEY,
+    enabled: !authLoading && appIdLoaded,
+  });
 
   useFocusEffect(
     useCallback(() => {
-      const refreshIfNeeded = async () => {
-        const shouldRefresh = await AsyncStorage.getItem('needsHomeRefresh');
-        if (shouldRefresh === '1' && token) {
-          await AsyncStorage.removeItem('needsHomeRefresh');
-          setIsRefreshing(true);
-          fetchPosts(1, true);
-        }
-      };
-
-      refreshIfNeeded();
-    }, [token])
+      consumeRefreshFlag();
+    }, [consumeRefreshFlag])
   );
-
-  const checkInitialState = async () => {
-    const appId = await AsyncStorage.getItem('appId');
-    router.replace(appId ? '/login' : '/find-church');
-  };
-
-  const fetchPosts = async (pageNum: number, reset: boolean) => {
-    if (!reset && loadMoreInFlightRef.current) return;
-    const appId = await AsyncStorage.getItem('appId');
-    if (!appId) { setIsPostsLoading(false); router.replace('/find-church'); return; }
-    try {
-      if (reset) {
-        setIsPostsLoading(true);
-      } else {
-        loadMoreInFlightRef.current = true;
-        setIsLoadingMore(true);
-      }
-      const response = await axios.get(`${API_URL}/posts?appId=${appId}&page=${pageNum}&limit=${PAGE_SIZE}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const data = Array.isArray(response.data) ? response.data : [];
-      if (reset) {
-        setPosts(data);
-      } else {
-        setPosts((prev) => {
-          const existingIds = new Set(prev.map((p: any) => String(p.id)));
-          const nextRows = data.filter((row: any) => !existingIds.has(String(row.id)));
-          return [...prev, ...nextRows];
-        });
-      }
-      setPage(pageNum);
-      setHasMore(data.length === PAGE_SIZE);
-    } catch (error) {
-      console.error('Failed to fetch posts:', error);
-    } finally {
-      setIsPostsLoading(false);
-      setIsLoadingMore(false);
-      setIsRefreshing(false);
-      if (!reset) loadMoreInFlightRef.current = false;
-    }
-  };
-
-  const onRefresh = () => {
-    canLoadMoreOnEndReachedRef.current = false;
-    setIsRefreshing(true);
-    fetchPosts(1, true);
-  };
-
-  const onEndReached = () => {
-    if (!canLoadMoreOnEndReachedRef.current) return;
-    if (isPostsLoading || isRefreshing || isLoadingMore || !hasMore) return;
-
-    canLoadMoreOnEndReachedRef.current = false;
-    fetchPosts(page + 1, false);
-  };
 
   const handleShare = () => {
     router.push('/share');
   };
 
-  if (authLoading || (isPostsLoading && !isRefreshing)) {
-    return <View style={styles.loading}><ActivityIndicator size="large" color="#007AFF" /></View>;
+  if (authLoading || !appIdLoaded) {
+    return (
+      <View style={styles.loading}>
+        <ActivityIndicator size="large" color="#007AFF" />
+      </View>
+    );
   }
 
   if (!token) return null;
+
+  if (isPostsLoading && !isRefreshing) {
+    return (
+      <View style={styles.loading}>
+        <ActivityIndicator size="large" color="#007AFF" />
+      </View>
+    );
+  }
 
   const profilePic = user?.profile_picture_url;
   const canPost = appData?.canAllUsersPost || user?.is_admin;
@@ -193,19 +142,20 @@ export default function HomeScreen() {
       <FlatList
         data={posts}
         renderItem={({ item }) => (
-          <PostCard post={item} userId={user?.id || ''} token={token} isAdmin={Boolean(user?.is_admin)} />
+          <PostCard
+            post={item}
+            userId={user?.id || ''}
+            token={token}
+            isAdmin={Boolean(user?.is_admin)}
+          />
         )}
         keyExtractor={(item) => String(item.id)}
         refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} />}
         ListHeaderComponent={ListHeader}
         ListFooterComponent={ListFooter}
         onEndReached={onEndReached}
-        onScrollBeginDrag={() => {
-          canLoadMoreOnEndReachedRef.current = true;
-        }}
-        onMomentumScrollBegin={() => {
-          canLoadMoreOnEndReachedRef.current = true;
-        }}
+        onScrollBeginDrag={markScrollable}
+        onMomentumScrollBegin={markScrollable}
         onEndReachedThreshold={0.3}
         ListEmptyComponent={
           <View style={styles.emptyContainer}>

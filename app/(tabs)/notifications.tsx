@@ -76,11 +76,16 @@ export default function NotificationsScreen() {
     if (!postId) return;
     const shouldOpenComments = Boolean(data?.comment || data?.reply || commentId);
 
+    const groupId = data?.groupId ? String(data.groupId) : undefined;
+
     router.push({
       pathname: '/notification-thread',
-      params: commentId
-        ? { postId, commentId, openComments: shouldOpenComments ? '1' : '0' }
-        : { postId, openComments: shouldOpenComments ? '1' : '0' },
+      params: {
+        postId,
+        ...(commentId ? { commentId } : {}),
+        ...(groupId ? { groupId } : {}),
+        openComments: shouldOpenComments ? '1' : '0',
+      },
     });
   };
 

@@ -31,6 +31,9 @@ yarn-error.*
 # local env files
 .env*.local
 
+# scratch / agent working files
+tmp/
+
 # typescript
 *.tsbuildinfo
 

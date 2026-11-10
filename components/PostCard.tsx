@@ -719,7 +719,20 @@ export const PostCard: React.FC<PostCardProps> = ({
         )}
         <View style={styles.headerText}>
           <Text style={styles.userName}>{post.church_users?.name}</Text>
-          <Text style={styles.timeAgo}>{formatTimeDifference(post.created_at)}</Text>
+          <View style={styles.metaLine}>
+            <Text style={styles.timeAgo}>{formatTimeDifference(post.created_at)}</Text>
+            {/* Group posts are visually marked so the same card in Home and in a
+                group feed is never mistaken for the other. */}
+            {post.groups?.name || post.group?.name ? (
+              <>
+                <Text style={styles.metaSeparator}>·</Text>
+                <MaterialIcons name="groups" size={12} color="#1d4ed8" />
+                <Text style={styles.groupBadge} numberOfLines={1}>
+                  {post.groups?.name || post.group?.name}
+                </Text>
+              </>
+            ) : null}
+          </View>
         </View>
         <TouchableOpacity onPress={openPostOptions}>
           <MaterialIcons name="more-vert" size={22} color="#444" />
@@ -1148,6 +1161,9 @@ const styles = StyleSheet.create({
   avatarTextSmall: { color: '#fff', fontWeight: 'bold', fontSize: 14 },
   headerText: { flex: 1 },
   userName: { fontWeight: '600', fontSize: 15 },
+  metaLine: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  metaSeparator: { color: '#666', fontSize: 12 },
+  groupBadge: { color: '#1d4ed8', fontSize: 12, fontWeight: '600', maxWidth: 130 },
   timeAgo: { color: '#666', fontSize: 12 },
   content: { fontSize: 15, lineHeight: 21, paddingHorizontal: 12, marginBottom: 8 },
   readMore: { color: '#3b82f6', fontSize: 13, paddingHorizontal: 12, marginBottom: 8 },

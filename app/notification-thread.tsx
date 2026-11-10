@@ -11,13 +11,15 @@ const API_URL = 'https://appmychurch.com/api/v1';
 export default function NotificationThreadScreen() {
   const { token, user } = useAuth();
   const router = useRouter();
-  const params = useLocalSearchParams<{ postId?: string; commentId?: string; openComments?: string }>();
+  const params = useLocalSearchParams<{ postId?: string; commentId?: string; openComments?: string; groupId?: string }>();
   const postId = typeof params.postId === 'string' ? params.postId : '';
   const targetCommentId = typeof params.commentId === 'string' ? params.commentId : '';
   const openComments = params.openComments === '1';
+  const groupId = typeof params.groupId === 'string' ? params.groupId : '';
 
   const [loading, setLoading] = useState(true);
   const [post, setPost] = useState<any | null>(null);
+  const [accessError, setAccessError] = useState<string | null>(null);
 
   const headers = useMemo(() => ({ Authorization: `Bearer ${token}` }), [token]);
 
@@ -28,14 +30,27 @@ export default function NotificationThreadScreen() {
       try {
         const postRes = await axios.get(`${API_URL}/posts/${postId}`, { headers });
         setPost(postRes.data || null);
-      } catch (e) {
-        console.error('Failed to load notification thread:', e);
+        setAccessError(null);
+      } catch (e: any) {
+        const status = e?.response?.status;
+        // Being removed from a group while a push is still sitting in the
+        // notification tray is normal, not an error: say so plainly instead of
+        // showing a generic failure or an endless spinner.
+        if (status === 403 || status === 404) {
+          setAccessError(
+            groupId
+              ? 'You are no longer a member of this group.'
+              : 'This post is no longer available.'
+          );
+        } else {
+          setAccessError('Could not load this post.');
+        }
       } finally {
         setLoading(false);
       }
     };
     load();
-  }, [token, postId, headers]);
+  }, [token, postId, headers, groupId]);
 
   if (loading) {
     return (
@@ -66,7 +81,7 @@ export default function NotificationThreadScreen() {
           initialFocusCommentId={targetCommentId || null}
         />
       ) : (
-        <Text style={styles.empty}>Post not found.</Text>
+        <Text style={styles.empty}>{accessError || 'Post not found.'}</Text>
       )}
     </View>
   );
