@@ -1,6 +1,7 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   Image,
   RefreshControl,
@@ -22,13 +23,16 @@ const REFRESH_KEY = 'needsGroupsRefresh';
 export default function GroupDetailScreen() {
   const { token, user } = useAuth();
   const router = useRouter();
-  const params = useLocalSearchParams<{ id?: string }>();
+  const params = useLocalSearchParams<{ id?: string; inviteId?: string }>();
   const groupId = typeof params.id === 'string' ? params.id : '';
+  const inviteId = typeof params.inviteId === 'string' ? params.inviteId : '';
 
   const [group, setGroup] = useState<Group | null>(null);
   const [appId, setAppId] = useState<string | null>(null);
   const [groupLoading, setGroupLoading] = useState(true);
   const [accessError, setAccessError] = useState<string | null>(null);
+  const [acceptingInvite, setAcceptingInvite] = useState(false);
+  const acceptedInviteRef = useRef<string>('');
 
   const isMember = group?.membership_state === 'active';
   const canPost = Boolean(isMember && (group?.my_role === 'owner' || group?.my_role === 'admin' || user?.is_admin));
@@ -53,6 +57,22 @@ export default function GroupDetailScreen() {
       setGroupLoading(false);
     }
   }, [token, groupId]);
+
+  // Landing here from an invite notification IS the accept. Runs once per invite
+  // id so a focus change cannot fire a second accept.
+  useEffect(() => {
+    if (!inviteId || !token || acceptedInviteRef.current === inviteId) return;
+    acceptedInviteRef.current = inviteId;
+    setAcceptingInvite(true);
+    groupsApi
+      .acceptInviteById(token, groupId, inviteId)
+      .then(() => loadGroup())
+      .catch((e: any) => {
+        Alert.alert('Could not join', groupsErrorMessage(e, 'The invite may have expired.'));
+        loadGroup();
+      })
+      .finally(() => setAcceptingInvite(false));
+  }, [inviteId, token, groupId, loadGroup]);
 
   useFocusEffect(
     useCallback(() => {

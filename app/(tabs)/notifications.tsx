@@ -71,12 +71,30 @@ export default function NotificationsScreen() {
 
   const openNotificationTarget = (item: any) => {
     const data = parsePushData(item?.pushData);
+    const groupId = data?.groupId ? String(data.groupId) : undefined;
+
+    // Group events are handled before post routing: an invite or a join request
+    // has no postId, so the old guard would silently swallow the tap.
+    if (data?.type === 'group_invite' && groupId) {
+      router.push({
+        pathname: '/group/[id]',
+        params: { id: groupId, inviteId: data.inviteId ? String(data.inviteId) : undefined },
+      });
+      return;
+    }
+
+    if (data?.type === 'group_request' && groupId) {
+      router.push({
+        pathname: '/group/[id]/requests',
+        params: { id: groupId },
+      });
+      return;
+    }
+
     const postId = data?.postId;
     const commentId = data?.parentId || data?.commentId;
     if (!postId) return;
     const shouldOpenComments = Boolean(data?.comment || data?.reply || commentId);
-
-    const groupId = data?.groupId ? String(data.groupId) : undefined;
 
     router.push({
       pathname: '/notification-thread',
