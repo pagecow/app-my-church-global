@@ -167,3 +167,41 @@ The earlier decision to REMOVE the 13+ gate is reversed. Apple now requires age 
 **Entitlement signing risk:** adding `ios.entitlements` forces EAS to regenerate the provisioning profile. If the App ID lacks the Declared Age Range capability, the build fails at signing rather than at compile. Expect that as the first failure mode, not a Swift error.
 
 **Local toolchain:** Xcode 27.2 (27B52) is installed; CocoaPods is not. `npx expo prebuild --platform ios --no-install` works in a scratch copy with `node_modules` symlinked.
+
+## 2026-11-10 22:42:46
+
+## expo-age-range on SDK 54 — three walls, two solved, one not
+
+Apple's App Store requirement (age assurance) forces `expo-age-range` (Declared Age Range). It is versioned **58.x for SDK 58**; this app is on SDK 54. Forcing it in failed on both platforms in build 1.3.0, each for a different reason.
+
+**Android wall 1 — schema.** `expo-age-range/expo-module.config.json` has `android.publication` with no `version`. SDK 54's expo-module gradle plugin treats that field as REQUIRED and throws while evaluating settings.gradle, before compiling anything. EAS reports only "Gradle build failed with unknown error". Real text:
+
+```
+Field 'version' is required for type with serial name
+'expo.modules.plugin.configuration.Publication',
+but it was missing at path: $.modules[1].projects[0].publication
+```
+
+**Android wall 2 — AAR metadata.** After adding `version`, the next failure is that the AAR is built against API 37 while SDK 54 compiles against 35:
+
+```
+requires libraries and applications that depend on it to compile against
+version 37 or later of the Android APIs
+```
+
+**Resolution (committed `a560e02`).** `scripts/patch-expo-age-range.js` runs from `postinstall` and rewrites the config to `platforms: ["apple"]`, deleting the android block. Verified: local `./gradlew :app:assembleRelease` → BUILD SUCCESSFUL, 488 tasks. Declared Age Range is an App Store requirement, Play Age Signals is irrelevant to Apple review, and `lib/ageRange.ts` returns 'unknown' on Android before importing — so nothing is lost. **The postinstall is essential**: EAS does not upload node_modules, it reinstalls on the builder, and without the script the patch vanishes and the build fails again.
+
+**iOS wall — the provisioning profile, not the code.** Adding `ios.entitlements` in app.json makes the build fail:
+
+```
+Provisioning profile "*[expo] com.amc.appmychurchglobal AppStore 2024-10-07T16:32:32.424Z"
+doesn't include the com.apple.developer.declared-age-range entitlement
+```
+
+The profile dates from **2024-10-07** — still valid, so EAS reuses it forever. Enabling the capability on the App ID does NOT regenerate it. `eas credentials` is interactive-only (no non-interactive removal): run it, Production → Provisioning Profile → Remove, then rebuild.
+
+**Unverified:** the Swift has never compiled. No CocoaPods here (system Ruby 2.6, no Homebrew, brew install needs sudo). The API surface checks out — `AsyncFunction`, `Field`, `Module`, `ModuleDefinition`, `Record` all exist in SDK 54's expo-modules-core, and the podspec pins no Expo version — but that is inspection, not compilation.
+
+**Also:** `eas.json` build images were pinned to `macos-sequoia-15.6-xcode-26.2` because `import DeclaredAgeRange` needs the iOS 26 SDK. Xcode 16 images cannot compile it.
+
+**EAS log access:** `~/.expo/state.json` sessionSecret is rejected by api.expo.dev (`AUTHENTICATION_ERROR`); `build:view --json` fails too. There is no programmatic way to read a failed build's Gradle log from here — reproduce locally instead (Android SDK is at `~/Library/Android/sdk`, Xcode 27.2 is installed).
