@@ -14,6 +14,7 @@ import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useAuth } from '../../../context/AuthContext';
 import {
   GroupJoinRequest,
+  describeMemberDetails,
   groupsApi,
   groupsErrorMessage,
 } from '../../../lib/groups';
@@ -99,6 +100,11 @@ export default function GroupRequestsScreen() {
               )}
               <View style={{ flex: 1 }}>
                 <Text style={styles.name}>{item.name}</Text>
+                {describeMemberDetails(item.birth_date, item.gender) ? (
+                  <Text style={styles.details}>
+                    {describeMemberDetails(item.birth_date, item.gender)}
+                  </Text>
+                ) : null}
                 {item.message ? (
                   <Text style={styles.message} numberOfLines={2}>
                     {item.message}
@@ -172,6 +178,7 @@ const styles = StyleSheet.create({
   avatarText: { color: '#fff', fontWeight: '700', fontSize: 17 },
   name: { fontSize: 15, fontWeight: '600', color: '#111' },
   message: { fontSize: 12, color: '#777', marginTop: 2 },
+  details: { fontSize: 12, color: '#555', marginTop: 2, fontWeight: '600' },
   actions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   actionBtn: {
     width: 36,

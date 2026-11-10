@@ -56,6 +56,8 @@ export interface GroupJoinRequest {
   user_id: string;
   name: string;
   profile_picture_url: string | null;
+  gender?: string | null;
+  birth_date?: string | null;
   message?: string | null;
   status: 'pending' | 'approved' | 'denied';
   created_at: string;
@@ -86,6 +88,32 @@ export interface InvitableMember {
   email: string | null;
   profile_picture_url: string | null;
   is_admin: boolean;
+}
+
+/** Whole years between a birth date and today, or null when it is unusable. */
+export function ageFromBirthDate(birthDate?: string | null): number | null {
+  if (!birthDate) return null;
+  const born = new Date(birthDate);
+  if (Number.isNaN(born.getTime())) return null;
+  const now = new Date();
+  let age = now.getFullYear() - born.getFullYear();
+  const beforeBirthday =
+    now.getMonth() < born.getMonth() ||
+    (now.getMonth() === born.getMonth() && now.getDate() < born.getDate());
+  if (beforeBirthday) age -= 1;
+  return age >= 0 && age < 130 ? age : null;
+}
+
+/** "Age 34 · Male" style summary, skipping whatever is missing. */
+export function describeMemberDetails(
+  birthDate?: string | null,
+  gender?: string | null
+): string {
+  const parts: string[] = [];
+  const age = ageFromBirthDate(birthDate);
+  if (age !== null) parts.push(`${age}`);
+  if (gender) parts.push(gender.charAt(0).toUpperCase() + gender.slice(1));
+  return parts.join(' · ');
 }
 
 export const groupsApi = {
