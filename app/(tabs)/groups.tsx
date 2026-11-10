@@ -1,6 +1,7 @@
 import React, { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   RefreshControl,
   SectionList,
   StyleSheet,
@@ -38,6 +39,7 @@ export default function GroupsScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [requestingId, setRequestingId] = useState<string | null>(null);
 
   const isAdmin = Boolean(user?.is_admin);
 
@@ -84,6 +86,23 @@ export default function GroupsScreen() {
   if (mine.length) sections.push({ title: 'My Groups', data: mine });
   if (rest.length) sections.push({ title: 'Discover', data: rest });
 
+  const requestAccess = async (group: Group) => {
+    if (!token) return;
+    setRequestingId(group.id);
+    try {
+      await groupsApi.requestToJoin(token, group.id);
+      // Reflect it immediately: the row flips to "Request pending" without a
+      // round trip, and the next refresh confirms it from the server.
+      setGroups((prev) =>
+        prev.map((g) => (g.id === group.id ? { ...g, has_pending_request: true } : g))
+      );
+    } catch (e: any) {
+      Alert.alert('Could not request access', groupsErrorMessage(e, 'Please try again.'));
+    } finally {
+      setRequestingId(null);
+    }
+  };
+
   const renderRow = (group: Group) => {
     const label = stateLabel(group);
     const isMember = group.membership_state === 'active';
@@ -117,9 +136,29 @@ export default function GroupsScreen() {
               : 'Public group'}
           </Text>
         </View>
-        <View style={[styles.chip, isMember && styles.chipActive]}>
-          <Text style={[styles.chipText, isMember && styles.chipTextActive]}>{label}</Text>
-        </View>
+        {isMember ? (
+          <View style={[styles.chip, styles.chipActive]}>
+            <Text style={[styles.chipText, styles.chipTextActive]}>{label}</Text>
+          </View>
+        ) : group.has_pending_request || group.membership_state === 'pending' ? (
+          <View style={styles.chip}>
+            <Text style={styles.chipText}>Pending</Text>
+          </View>
+        ) : (
+          <TouchableOpacity
+            style={styles.requestBtn}
+            disabled={requestingId === group.id}
+            onPress={() => requestAccess(group)}
+          >
+            {requestingId === group.id ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <Text style={styles.requestBtnText}>
+                {group.visibility === 'private' ? 'Request access' : 'Join'}
+              </Text>
+            )}
+          </TouchableOpacity>
+        )}
       </TouchableOpacity>
     );
   };
@@ -211,6 +250,15 @@ const styles = StyleSheet.create({
   rowTitle: { fontSize: 16, fontWeight: '600', color: '#111' },
   rowSubtitle: { fontSize: 13, color: '#666', marginTop: 2 },
   rowMeta: { fontSize: 12, color: '#999', marginTop: 4 },
+  requestBtn: {
+    backgroundColor: '#1d4ed8',
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 16,
+    minWidth: 84,
+    alignItems: 'center',
+  },
+  requestBtnText: { color: '#fff', fontSize: 12, fontWeight: '700' },
   chip: {
     paddingHorizontal: 10,
     paddingVertical: 5,
