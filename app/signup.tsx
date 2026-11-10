@@ -88,7 +88,11 @@ export default function SignupScreen() {
       Alert.alert('Terms Required', 'Please agree to the Terms of Use and Community Guidelines to continue.');
       return;
     }
-    if (birthDate && !isAtLeast13(birthDate)) {
+    if (!birthDate) {
+      Alert.alert('Birth Date Required', 'Please select your birth date. We use it to confirm you are old enough to use the app.');
+      return;
+    }
+    if (!isAtLeast13(birthDate)) {
       Alert.alert('Age Requirement', 'You must be at least 13 years old to sign up for this app.');
       return;
     }
@@ -105,6 +109,7 @@ export default function SignupScreen() {
 
   const handleVerifyOtp = async () => {
     if (otp.length < 6) { Alert.alert('Error', 'Enter the 6-digit code'); return; }
+    if (!birthDate) { setStep('form'); return; }
     setIsLoading(true);
     try {
       const verifyRes = await axios.post(`${API_URL}/signup/verify-otp`, { email, appId, otp });
@@ -112,7 +117,7 @@ export default function SignupScreen() {
       await signup({
         name,
         gender: gender.trim() || undefined,
-        birth_date: birthDate ? formatDateForApi(birthDate) : '',
+        birth_date: formatDateForApi(birthDate),
         email,
         password,
         appId,
@@ -200,7 +205,7 @@ export default function SignupScreen() {
               ))}
             </View>
 
-            <Text style={styles.label}>Birth Date (optional)</Text>
+            <Text style={styles.label}>Birth Date *</Text>
             <TouchableOpacity style={styles.pickerField} onPress={openBirthDatePicker}>
               <Text style={styles.pickerValue}>{birthDate ? birthDate.toLocaleDateString() : 'Select birth date'}</Text>
             </TouchableOpacity>
