@@ -6,6 +6,7 @@ import {
   Image,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -16,6 +17,7 @@ import { useAuth } from '../../../context/AuthContext';
 import {
   Group,
   GroupMember,
+  InvitableMember,
   groupsApi,
   groupsErrorMessage,
 } from '../../../lib/groups';
@@ -32,8 +34,11 @@ export default function GroupMembersScreen() {
   const [group, setGroup] = useState<Group | null>(null);
   const [members, setMembers] = useState<GroupMember[]>([]);
   const [loading, setLoading] = useState(true);
-  const [inviteCode, setInviteCode] = useState<string | null>(null);
-  const [creatingInvite, setCreatingInvite] = useState(false);
+  const [search, setSearch] = useState('');
+  const [results, setResults] = useState<InvitableMember[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [invitingId, setInvitingId] = useState<string | null>(null);
+  const [invitedIds, setInvitedIds] = useState<string[]>([]);
 
   const myRole = group?.my_role;
   const canManage = myRole === 'owner' || myRole === 'admin' || Boolean(user?.is_admin);
@@ -61,18 +66,43 @@ export default function GroupMembersScreen() {
     }, [load])
   );
 
-  const createInvite = async () => {
-    if (!token) return;
-    setCreatingInvite(true);
+  const runSearch = useCallback(
+    async (query: string) => {
+      if (!token || !groupId) return;
+      setSearching(true);
+      try {
+        const people = await groupsApi.searchInvitableMembers(token, groupId, query);
+        setResults(people);
+      } catch (e: any) {
+        Alert.alert('Could not search', groupsErrorMessage(e, 'Please try again.'));
+      } finally {
+        setSearching(false);
+      }
+    },
+    [token, groupId]
+  );
+
+  // A first page on arrival, so the invite list is never blank.
+  useFocusEffect(
+    useCallback(() => {
+      if (canManage) runSearch('');
+    }, [canManage, runSearch])
+  );
+
+  const invitePerson = async (person: InvitableMember) => {
+    if (!token || invitingId) return;
+    setInvitingId(person.id);
     try {
-      const invite = await groupsApi.createInvite(token, groupId);
-      setInviteCode(invite.code);
-      Alert.alert('Invite created', 'The invite code is copied to your clipboard.');
-      await Clipboard.setStringAsync(invite.code);
+      await groupsApi.inviteMember(token, groupId, person.id);
+      setInvitedIds((prev) => (prev.includes(person.id) ? prev : [...prev, person.id]));
+      Alert.alert(
+        'Invite sent',
+        `${person.name} will get a notification. Tapping it adds them to the group.`
+      );
     } catch (e: any) {
-      Alert.alert('Could not create invite', groupsErrorMessage(e, 'Please try again.'));
+      Alert.alert('Could not invite', groupsErrorMessage(e, 'Please try again.'));
     } finally {
-      setCreatingInvite(false);
+      setInvitingId(null);
     }
   };
 
@@ -147,36 +177,75 @@ export default function GroupMembersScreen() {
         keyExtractor={(item) => item.user_id}
         ListHeaderComponent={
           <View>
-            {canManage && group?.visibility === 'private' ? (
+            {canManage ? (
               <View style={styles.inviteCard}>
                 <Text style={styles.inviteTitle}>Invite someone</Text>
                 <Text style={styles.inviteHint}>
-                  Share a code. They enter it in Groups to join this group.
+                  Search your church and send them an invite. They get a notification, and
+                  tapping it puts them straight into this group.
                 </Text>
-                {inviteCode ? (
-                  <View style={styles.inviteCodeRow}>
-                    <Text style={styles.inviteCode} selectable>
-                      {inviteCode}
-                    </Text>
-                    <TouchableOpacity
-                      onPress={async () => {
-                        await Clipboard.setStringAsync(inviteCode);
-                        Alert.alert('Copied', 'Invite code copied.');
-                      }}
-                    >
-                      <MaterialIcons name="content-copy" size={20} color="#1d4ed8" />
-                    </TouchableOpacity>
-                  </View>
-                ) : null}
-                <TouchableOpacity style={styles.inviteBtn} onPress={createInvite} disabled={creatingInvite}>
-                  {creatingInvite ? (
-                    <ActivityIndicator color="#fff" size="small" />
-                  ) : (
-                    <Text style={styles.inviteBtnText}>
-                      {inviteCode ? 'Create another code' : 'Create invite code'}
-                    </Text>
-                  )}
-                </TouchableOpacity>
+                <View style={styles.searchRow}>
+                  <MaterialIcons name="search" size={18} color="#64748b" />
+                  <TextInput
+                    style={styles.searchInput}
+                    value={search}
+                    placeholder="Search by name or email"
+                    placeholderTextColor="#94a3b8"
+                    autoCapitalize="none"
+                    returnKeyType="search"
+                    onChangeText={(text) => {
+                      setSearch(text);
+                      runSearch(text);
+                    }}
+                  />
+                  {searching ? <ActivityIndicator size="small" color="#1d4ed8" /> : null}
+                </View>
+                {results.length === 0 && !searching ? (
+                  <Text style={styles.inviteHint}>
+                    {search.trim()
+                      ? 'Nobody matches that search.'
+                      : 'Everyone in this church is already in the group.'}
+                  </Text>
+                ) : (
+                  results.map((person) => {
+                    const invited = invitedIds.includes(person.id);
+                    const busy = invitingId === person.id;
+                    return (
+                      <View key={person.id} style={styles.candidateRow}>
+                        {person.profile_picture_url ? (
+                          <Image source={{ uri: person.profile_picture_url }} style={styles.candidateAvatar} />
+                        ) : (
+                          <View style={[styles.candidateAvatar, styles.avatarFallback]}>
+                            <Text style={styles.avatarText}>
+                              {(person.name || '?')[0].toUpperCase()}
+                            </Text>
+                          </View>
+                        )}
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.candidateName} numberOfLines={1}>
+                            {person.name}
+                          </Text>
+                          {person.email ? (
+                            <Text style={styles.candidateEmail} numberOfLines={1}>
+                              {person.email}
+                            </Text>
+                          ) : null}
+                        </View>
+                        <TouchableOpacity
+                          style={[styles.inviteBtn, styles.inviteBtnSmall, (invited || busy) ? styles.inviteBtnDone : null]}
+                          onPress={() => invitePerson(person)}
+                          disabled={invited || busy}
+                        >
+                          {busy ? (
+                            <ActivityIndicator color="#fff" size="small" />
+                          ) : (
+                            <Text style={styles.inviteBtnText}>{invited ? 'Invited' : 'Invite'}</Text>
+                          )}
+                        </TouchableOpacity>
+                      </View>
+                    );
+                  })
+                )}
               </View>
             ) : null}
             <Text style={styles.sectionHeader}>
@@ -259,17 +328,6 @@ const styles = StyleSheet.create({
   inviteCard: { backgroundColor: '#fff', padding: 16, borderBottomWidth: 1, borderBottomColor: '#eee' },
   inviteTitle: { fontSize: 15, fontWeight: '700', color: '#111' },
   inviteHint: { fontSize: 12, color: '#777', marginTop: 4, lineHeight: 17 },
-  inviteCodeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: '#f1f5f9',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    marginTop: 12,
-  },
-  inviteCode: { fontSize: 16, fontWeight: '700', letterSpacing: 1.5, color: '#1e293b' },
   inviteBtn: {
     backgroundColor: '#3b82f6',
     borderRadius: 8,
@@ -277,6 +335,32 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: 10,
   },
+  searchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    marginTop: 10,
+  },
+  searchInput: { flex: 1, fontSize: 15, color: '#0f172a', paddingVertical: 2 },
+  candidateRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#f1f5f9',
+  },
+  candidateAvatar: { width: 34, height: 34, borderRadius: 17, backgroundColor: '#e2e8f0' },
+  candidateName: { fontSize: 15, fontWeight: '600', color: '#0f172a' },
+  candidateEmail: { fontSize: 12, color: '#64748b' },
+  inviteBtnSmall: { paddingHorizontal: 14, paddingVertical: 7, minWidth: 78 },
+  inviteBtnDone: { backgroundColor: '#94a3b8' },
   inviteBtnText: { color: '#fff', fontWeight: '700', fontSize: 14 },
   sectionHeader: {
     paddingHorizontal: 16,
