@@ -39,7 +39,6 @@ export default function GroupsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const groupsEnabled = Boolean(appData?.groups_enabled);
   const isAdmin = Boolean(user?.is_admin);
 
   const load = useCallback(async () => {
@@ -69,20 +68,6 @@ export default function GroupsScreen() {
       load();
     }, [load])
   );
-
-  if (!groupsEnabled) {
-    // The tab is hidden by app/(tabs)/_layout.tsx when the flag is off, but a
-    // deep link or a stale router state can still land here.
-    return (
-      <View style={styles.container}>
-        <Navbar />
-        <View style={styles.center}>
-          <MaterialIcons name="groups" size={44} color="#ccc" />
-          <Text style={styles.emptyText}>Groups are not available for this church yet.</Text>
-        </View>
-      </View>
-    );
-  }
 
   if (loading && !refreshing) {
     return (

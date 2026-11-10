@@ -80,3 +80,71 @@ only bites hand-rolled probes.
 
 Topic created by `POST /api/post/follow/master` with `isTopicGroup: true` + `masterSubID`
 automatically includes the creator as the first subscriber.
+
+## 2026-11-10 15:37:31
+
+## EAS builds — four traps, in the order they bit (learned the hard way)
+
+**1. The global `eas` on this machine is 12.3.0 — SDK 49 era. Do not use it.**
+It bundles `@expo/prebuild-config@6.7.3` + `expo-modules-autolinking@1.11.2`, and
+line 36 of its `importExpoModulesAutolinking.js` throws
+"The 'expo-modules-autolinking' package has been found, but it seems to be
+incompatible with '@expo/prebuild-config'" against this SDK 54 project.
+
+The trap: `eas build --platform all` **queues the Android build, then dies on the
+iOS half** — so you get a real Android build plus a confusing error, and no iOS
+build at all. The message appears *before* upload, right after "Loaded env
+configuration", which is the tell that it is a local CLI failure, not a build.
+
+Workaround that works: `npx --yes eas-cli@latest build --platform ios ...`
+Permanent fix: `npm install -g eas-cli@latest`.
+
+**2. `babel-preset-expo` was never declared.** `babel.config.js` references it
+but it survived only as a hoisted transitive copy. `npm dedupe` (needed for the
+next trap) removed it, and every Metro bundle failed with
+"Cannot find module 'babel-preset-expo'". Now declared at `~54.0.10`.
+
+**3. Duplicate native module.** `expo-font` was installed twice (14.0.12 under
+`node_modules/expo/node_modules/`, 14.0.11 at root). Native builds allow one
+copy. `npm dedupe` fixes it.
+
+**4. `expo-video@55.0.10` (SDK 55) sat inside an SDK 54 project.** Fixed to
+`~3.0.16` via `npx expo install --fix` — which then fails at the very end with
+"Cannot automatically write to dynamic config at app.config.js"; the version
+fix still applies, only the cosmetic plugin step is skipped.
+
+**Verification that works locally (no device, no queue):**
+`npx expo export --platform android` / `--platform ios` reproduces the exact
+"Bundle JavaScript" failure EAS reports. Do this before spending a 20-minute
+build. `npx expo prebuild --platform android --no-install` reproduces the native
+side (remember to `rm -rf android` and `git checkout -- .` afterwards).
+
+**`eas build:view --json` is unsupported**; `eas build:list --json` works and is
+the reliable way to poll status by id.
+
+Builds at commit `f2853470`: Android `3706c899`, iOS `33d380d2`.
+
+## 2026-11-10 19:15:52
+
+## Two repos, two jobs — do not confuse them
+
+- **`app-my-church`** = Next.js server at appmychurch.com. It hosts the **website** AND the **`/api/v1` REST API that the Expo apps call**. Editing it is not "editing the iframe"; it is editing the backend.
+- **`app-my-church-global`** (this repo) and **`amc-central-community-church`** = the actual Expo apps. They talk to that API directly. `API_URL` is hardcoded to `https://appmychurch.com/api/v1` in ~12 files.
+- EAS project `app-my-church-global`, bundle `com.amc.appmychurchglobal`, ascAppId `6736629497`.
+
+## Signup bug — root cause and where the fix actually lives
+
+The Expo signup screen is **`app/signup.tsx`** (this repo). Its guard was already correct: `if (!name || !email || !password)` and `if (birthDate && !isAtLeast13(birthDate))`. It sends `birth_date: birthDate ? formatDateForApi(birthDate) : ''` — an **empty string** when the date is skipped.
+
+The server did `if (!name || !email || !password || !appId || !birth_date)` — `''` is falsy → 400 "Missing required fields", after OTP verify. That was the bug.
+
+**Fixed server-side** (commit `629d6b1`, on `main`): dropped `birth_date` from the check, deleted the 13+ gate, kept a guarded parse. **The Expo client needed no change.** `components/appuser/Signup.tsx` (web form) was also patched — harmless, but not the path the mobile user hits.
+
+## Deploy gap — the live blocker (as of 2026-11-10)
+
+`main` is at `629d6b1` on GitHub, but **Vercel has not rebuilt**:
+- `GET /api/v1/groups` → **404 with an HTML body** (Next 404 page, route absent)
+- `GET /api/v1/app/:id` → `groups_enabled` **absent**
+- homepage response header `age` ≈ 1,815,555s (~3 weeks)
+
+Consequences while undeployed: the app sees no flag, so **no Groups tab and no bell** (correct behaviour against old server). And the deployed `/posts` predates `group_id`, so a group post **leaks into the church home feed** — verified live with the "Device test" post. Check the Vercel project for a failed build on `629d6b1`; I cannot see it from here.

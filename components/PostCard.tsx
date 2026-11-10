@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Alert, StyleSheet, View, Text, Image, TouchableOpacity, Pressable, Modal, FlatList, TextInput, Platform, Keyboard, Dimensions, Linking } from 'react-native';
+import { Alert, StyleSheet, View, Text, Image, TouchableOpacity, Pressable, Modal, FlatList, TextInput, Platform, Keyboard, Dimensions, Linking, ActivityIndicator } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { VideoView, useVideoPlayer } from 'expo-video';
 import axios from 'axios';
@@ -1055,12 +1055,22 @@ export const PostCard: React.FC<PostCardProps> = ({
                 multiline
               />
               <Pressable
-                onPressIn={handleSendPress}
-                disabled={isSubmittingComment}
+                onPress={handleSendPress}
+                disabled={isSubmittingComment || !(showReplyThread ? replyText : newComment).trim()}
                 hitSlop={{ top: 12, right: 12, bottom: 12, left: 12 }}
-                style={styles.sendBtn}
+                style={[styles.sendBtn, (isSubmittingComment || !(showReplyThread ? replyText : newComment).trim()) ? styles.sendBtnDisabled : null]}
+                accessibilityRole="button"
+                accessibilityLabel="Send comment"
               >
-                <MaterialIcons name="send" size={24} color="#3b82f6" />
+                {isSubmittingComment ? (
+                  <ActivityIndicator size="small" color="#3b82f6" />
+                ) : (
+                  <MaterialIcons
+                    name="send"
+                    size={24}
+                    color={!(showReplyThread ? replyText : newComment).trim() ? '#bfd3f7' : '#3b82f6'}
+                  />
+                )}
               </Pressable>
             </View>
 
@@ -1258,6 +1268,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
   },
   sendBtn: { marginLeft: 8, width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
+  sendBtnDisabled: { opacity: 0.45 },
   editOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'center', padding: 20 },
   inlineEditOverlay: {
     position: 'absolute',

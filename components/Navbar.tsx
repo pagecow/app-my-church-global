@@ -16,7 +16,6 @@ export default function Navbar() {
   const [unreadCount, setUnreadCount] = useState(0);
   const router = useRouter();
 
-  const groupsEnabled = Boolean(appData?.groups_enabled);
   const nnSubId = user?.native_notify_indie_id;
 
   /**
@@ -24,7 +23,7 @@ export default function Navbar() {
    * missing endpoint just leaves the bell unbadged - it never blocks the header.
    */
   const refreshUnread = useCallback(async () => {
-    if (!groupsEnabled || !token || !nnSubId) {
+    if (!token || !nnSubId) {
       setUnreadCount(0);
       return;
     }
@@ -39,7 +38,7 @@ export default function Navbar() {
     } catch {
       setUnreadCount(0);
     }
-  }, [groupsEnabled, token, nnSubId]);
+  }, [token, nnSubId]);
 
   useFocusEffect(
     useCallback(() => {
@@ -72,21 +71,19 @@ export default function Navbar() {
   return (
     <View style={styles.navbar}>
       <Text style={styles.churchName} numberOfLines={1}>{appData?.name || 'App My Church'}</Text>
-      {groupsEnabled ? (
-        <TouchableOpacity
-          style={styles.bellBtn}
-          onPress={() => router.push('/notifications')}
-          accessibilityLabel="Notifications"
-          accessibilityRole="button"
-        >
-          <MaterialIcons name="notifications" size={26} color="#333" />
-          {unreadCount > 0 ? (
-            <View style={styles.badge}>
-              <Text style={styles.badgeText}>{unreadCount > 9 ? '9+' : String(unreadCount)}</Text>
-            </View>
-          ) : null}
-        </TouchableOpacity>
-      ) : null}
+      <TouchableOpacity
+        style={styles.bellBtn}
+        onPress={() => router.push('/notifications')}
+        accessibilityLabel="Notifications"
+        accessibilityRole="button"
+      >
+        <MaterialIcons name="notifications" size={26} color="#333" />
+        {unreadCount > 0 ? (
+          <View style={styles.badge}>
+            <Text style={styles.badgeText}>{unreadCount > 9 ? '9+' : String(unreadCount)}</Text>
+          </View>
+        ) : null}
+      </TouchableOpacity>
       <TouchableOpacity onPress={() => setDrawerVisible(true)}>
         {profilePic ? (
           <Image source={{ uri: profilePic }} style={styles.avatar} />
