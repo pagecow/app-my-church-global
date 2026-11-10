@@ -148,3 +148,22 @@ The server did `if (!name || !email || !password || !appId || !birth_date)` — 
 - homepage response header `age` ≈ 1,815,555s (~3 weeks)
 
 Consequences while undeployed: the app sees no flag, so **no Groups tab and no bell** (correct behaviour against old server). And the deployed `/posts` predates `group_id`, so a group post **leaks into the church home feed** — verified live with the "Device test" post. Check the Vercel project for a failed build on `629d6b1`; I cannot see it from here.
+
+## 2026-11-10 22:03:55
+
+## Age gate reversed: 13+ is mandatory again (2026-11-10)
+
+The earlier decision to REMOVE the 13+ gate is reversed. Apple now requires age assurance for apps with social/UGC features ("Declared Age Range API called before enabling social media features"), so the owner asked for age to be required and under-13 signups refused.
+
+**Shipped:**
+- `app-my-church` `a2dc850`: `/api/v1/signup` rejects a missing birth date (400) and a real date under 13 (403). Check is elapsed-ms based (`13 * 365.25 * 86400000`), not calendar-year subtraction, so a leap day cannot move the boundary. `isAtLeast13` helper is local to that route.
+- `app-my-church-global` `416501a`: `app/signup.tsx` requires the date, labels it `Birth Date *`, and re-checks at the OTP step (which also narrows `Date | null` for the payload).
+- `app-my-church-global` `c93ff73`: `lib/ageRange.ts` + `com.apple.developer.declared-age-range` entitlement.
+
+**NOT yet enforced:** `app/api/registerChurchUser` (web signup) still writes `birth_date` straight through with no gate, and `components/appuser/Signup.tsx` still treats the field as optional. Anyone signing up on the website can still be under 13.
+
+**expo-age-range on SDK 54 — the open risk.** The package is versioned with Expo SDKs; `58.0.2` is what npm installs today and there is NO SDK 54 line (first release postdates it). Installed anyway because its podspec pins no Expo version, its iOS code is plain `ExpoModulesCore` + `AsyncFunction`, and it guards the framework with `#available(iOS 26.0, *)` returning an empty response below that. Prebuild resolves it cleanly. **The native compile has never run** — CocoaPods is not installed on this machine (`pod: command not found`), so `pod install`/xcodebuild could not be attempted locally. Only an EAS build can settle it.
+
+**Entitlement signing risk:** adding `ios.entitlements` forces EAS to regenerate the provisioning profile. If the App ID lacks the Declared Age Range capability, the build fails at signing rather than at compile. Expect that as the first failure mode, not a Swift error.
+
+**Local toolchain:** Xcode 27.2 (27B52) is installed; CocoaPods is not. `npx expo prebuild --platform ios --no-install` works in a scratch copy with `node_modules` symlinked.

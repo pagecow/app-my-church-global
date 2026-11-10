@@ -8,20 +8,20 @@
       "distribution": "internal",
       "environment": "development",
       "ios": {
-        "image": "sdk-54"
+        "image": "macos-sequoia-15.6-xcode-26.2"
       }
     },
     "preview": {
       "distribution": "internal",
       "environment": "preview",
       "ios": {
-        "image": "sdk-54"
+        "image": "macos-sequoia-15.6-xcode-26.2"
       }
     },
     "production": {
       "environment": "production",
       "ios": {
-        "image": "sdk-54"
+        "image": "macos-sequoia-15.6-xcode-26.2"
       }
     }
   },
