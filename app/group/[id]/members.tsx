@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -25,6 +25,12 @@ import {
 const roleLabel = (role: string) =>
   role === 'owner' ? 'Owner' : role === 'admin' ? 'Admin' : 'Member';
 
+// The invite confirmation names the person the way you'd say it out loud.
+const firstNameOf = (name?: string | null) => {
+  const first = (name || '').trim().split(/\s+/)[0];
+  return first || 'That person';
+};
+
 export default function GroupMembersScreen() {
   const { token, user } = useAuth();
   const router = useRouter();
@@ -39,6 +45,9 @@ export default function GroupMembersScreen() {
   const [searching, setSearching] = useState(false);
   const [invitingId, setInvitingId] = useState<string | null>(null);
   const [invitedIds, setInvitedIds] = useState<string[]>([]);
+  // The last query typed, so a slow response for an older query can't repopulate the
+  // list after the box was cleared or refilled.
+  const latestQuery = useRef('');
 
   const myRole = group?.my_role;
   const canManage = myRole === 'owner' || myRole === 'admin' || Boolean(user?.is_admin);
@@ -69,10 +78,11 @@ export default function GroupMembersScreen() {
   const runSearch = useCallback(
     async (query: string) => {
       if (!token || !groupId) return;
+      latestQuery.current = query;
       setSearching(true);
       try {
         const people = await groupsApi.searchInvitableMembers(token, groupId, query);
-        setResults(people);
+        if (latestQuery.current === query) setResults(people);
       } catch (e: any) {
         Alert.alert('Could not search', groupsErrorMessage(e, 'Please try again.'));
       } finally {
@@ -82,23 +92,13 @@ export default function GroupMembersScreen() {
     [token, groupId]
   );
 
-  // A first page on arrival, so the invite list is never blank.
-  useFocusEffect(
-    useCallback(() => {
-      if (canManage) runSearch('');
-    }, [canManage, runSearch])
-  );
-
   const invitePerson = async (person: InvitableMember) => {
     if (!token || invitingId) return;
     setInvitingId(person.id);
     try {
       await groupsApi.inviteMember(token, groupId, person.id);
       setInvitedIds((prev) => (prev.includes(person.id) ? prev : [...prev, person.id]));
-      Alert.alert(
-        'Invite sent',
-        `${person.name} will get a notification. Tapping it adds them to the group.`
-      );
+      Alert.alert(`${firstNameOf(person.name)} was added to your group!`);
     } catch (e: any) {
       Alert.alert('Could not invite', groupsErrorMessage(e, 'Please try again.'));
     } finally {
@@ -181,8 +181,8 @@ export default function GroupMembersScreen() {
               <View style={styles.inviteCard}>
                 <Text style={styles.inviteTitle}>Invite someone</Text>
                 <Text style={styles.inviteHint}>
-                  Search your church and send them an invite. They get a notification, and
-                  tapping it puts them straight into this group.
+                  Clicking Invite automatically adds the user to your group, and a notification
+                  will be sent to let them know they are part of your group now.
                 </Text>
                 <View style={styles.searchRow}>
                   <MaterialIcons name="search" size={18} color="#64748b" />
@@ -195,17 +195,20 @@ export default function GroupMembersScreen() {
                     returnKeyType="search"
                     onChangeText={(text) => {
                       setSearch(text);
-                      runSearch(text);
+                      // Nothing is listed until something is typed, and then only the
+                      // matches the server returns for that query.
+                      if (text.trim()) {
+                        runSearch(text);
+                      } else {
+                        latestQuery.current = '';
+                        setResults([]);
+                      }
                     }}
                   />
                   {searching ? <ActivityIndicator size="small" color="#1d4ed8" /> : null}
                 </View>
-                {results.length === 0 && !searching ? (
-                  <Text style={styles.inviteHint}>
-                    {search.trim()
-                      ? 'Nobody matches that search.'
-                      : 'Everyone in this church is already in the group.'}
-                  </Text>
+                {!search.trim() ? null : results.length === 0 && !searching ? (
+                  <Text style={styles.inviteHint}>Nobody matches that search.</Text>
                 ) : (
                   results.map((person) => {
                     const invited = invitedIds.includes(person.id);
