@@ -93,6 +93,27 @@ export default function EventsScreen() {
     return `${h}:${m}`;
   };
 
+  // The API stores the wall-clock values the admin picked in the UTC components of these
+  // timestamps: startDate comes back as "yyyy-mm-ddT00:00:00Z" and startTime as
+  // "...T18:00:00Z" for a 6:00 PM event. Reading them with local getters (new Date(...)
+  // .toLocaleTimeString()) shifts them by the device's UTC offset, so 6:00 PM renders as
+  // 12:00 PM six hours west of UTC. Rebuilding the Date from the UTC components gives a
+  // local Date whose fields ARE what was entered, which fixes both the display and the
+  // edit picker (and lets the existing formatTimeForApi/formatDateForApi round-trip it).
+  const parseWallClock = (value?: string | null): Date | null => {
+    if (!value) return null;
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return null;
+    return new Date(
+      parsed.getUTCFullYear(),
+      parsed.getUTCMonth(),
+      parsed.getUTCDate(),
+      parsed.getUTCHours(),
+      parsed.getUTCMinutes(),
+      parsed.getUTCSeconds()
+    );
+  };
+
   const getExtensionFromMime = (mimeType: string) => {
     const parts = mimeType.split('/');
     return parts.length > 1 ? parts[1] : 'bin';
@@ -197,10 +218,10 @@ export default function EventsScreen() {
     setTitle(event.title || '');
     setDescription(event.description || '');
     setLocation(event.location || '');
-    setStartDateValue(event.startDate ? new Date(event.startDate) : new Date());
-    setEndDateValue(event.endDate ? new Date(event.endDate) : new Date());
-    setStartTimeValue(event.startTime ? new Date(event.startTime) : new Date());
-    setEndTimeValue(event.endTime ? new Date(event.endTime) : new Date());
+    setStartDateValue(parseWallClock(event.startDate) ?? new Date());
+    setEndDateValue(parseWallClock(event.endDate) ?? new Date());
+    setStartTimeValue(parseWallClock(event.startTime) ?? new Date());
+    setEndTimeValue(parseWallClock(event.endTime) ?? new Date());
     setAsset(null);
     setEditingEventId(event.id);
     setShowCreateModal(true);
@@ -365,15 +386,23 @@ export default function EventsScreen() {
         </Text>
       )}
       {!!item.startDate && (
-        <Text style={styles.eventMeta}>Start Date: {new Date(item.startDate).toLocaleDateString()}</Text>
+        <Text style={styles.eventMeta}>Start Date: {parseWallClock(item.startDate)?.toLocaleDateString()}</Text>
       )}
       {!!item.startTime && (
-        <Text style={styles.eventMeta}>Start Time: {new Date(item.startTime).toLocaleTimeString()}</Text>
+        <Text style={styles.eventMeta}>
+          Start Time:{' '}
+          {parseWallClock(item.startTime)?.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+        </Text>
       )}
       {!!item.endDate && (
-        <Text style={styles.eventMeta}>End Date: {new Date(item.endDate).toLocaleDateString()}</Text>
+        <Text style={styles.eventMeta}>End Date: {parseWallClock(item.endDate)?.toLocaleDateString()}</Text>
       )}
-      {!!item.endTime && <Text style={styles.eventMeta}>End Time: {new Date(item.endTime).toLocaleTimeString()}</Text>}
+      {!!item.endTime && (
+        <Text style={styles.eventMeta}>
+          End Time:{' '}
+          {parseWallClock(item.endTime)?.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+        </Text>
+      )}
       {!!item.location && <Text style={styles.eventMeta}>Location: {item.location}</Text>}
       <View style={styles.rsvpSection}>
         <Text style={styles.rsvpLabel}>Will you attend?</Text>
