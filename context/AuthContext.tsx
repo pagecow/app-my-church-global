@@ -55,6 +55,17 @@ const API_URL = 'https://appmychurch.com/api/v1';
 const FALLBACK_NN_APP_ID = 23936;
 const FALLBACK_NN_APP_TOKEN = 'kqVaAXbDHXKd5tICC4dDQv';
 
+/**
+ * The church sub id this device is currently registered under.
+ *
+ * Persisted because the unregister that matters happens two different ways: a
+ * church switch (same install, new church) and a logout after a cold start where
+ * `/user` failed and `appData` is null. Both used to depend on in-memory state
+ * and could silently skip the unregister, leaving the old church's pushes
+ * arriving on the device.
+ */
+const REGISTERED_CHURCH_SUB_ID = 'nnRegisteredChurchSubId';
+
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [appData, setAppData] = useState<AppData | null>(null);
@@ -81,10 +92,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const nnAppId = appData?.native_notify_app_id || FALLBACK_NN_APP_ID;
         const nnAppToken = appData?.native_notify_app_token || FALLBACK_NN_APP_TOKEN;
 
-        await Promise.all([
-          registerIndieID(userSubId, nnAppId, nnAppToken),
-          registerIndieID(groupSubId, nnAppId, nnAppToken),
-        ]);
+        // Switching churches on one install leaves the previous church's id
+        // registered, so that church's church-wide pushes keep arriving. Take the
+        // recorded id off before adding the new one.
+        const previous = await AsyncStorage.getItem(REGISTERED_CHURCH_SUB_ID);
+        if (previous && previous !== groupSubId) {
+          try {
+            await unregisterIndieDevice(previous, nnAppId, nnAppToken);
+          } catch (error) {
+            console.error('Failed to unregister previous church subscription:', error);
+          }
+        }
+
+        // Sequential on purpose. Two concurrent registrations for the same device
+        // have no guaranteed order at the vendor, and a registration that loses
+        // is invisible until a push silently fails to arrive.
+        await registerIndieID(userSubId, nnAppId, nnAppToken);
+        await registerIndieID(groupSubId, nnAppId, nnAppToken);
+
+        await AsyncStorage.setItem(REGISTERED_CHURCH_SUB_ID, groupSubId);
       } catch (error) {
         console.error('Native Notify registration failed:', error);
       }
@@ -184,7 +210,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const logout = async () => {
     try {
       const userSubId = user?.native_notify_indie_id;
-      const groupSubId = appData?.id;
+      // Read the church id that was actually registered, not the one currently in
+      // memory: after a cold start where `/user` failed, `appData` is null and the
+      // old code skipped this unregister entirely.
+      const groupSubId =
+        (await AsyncStorage.getItem(REGISTERED_CHURCH_SUB_ID)) || appData?.id;
       const nnAppId = appData?.native_notify_app_id || FALLBACK_NN_APP_ID;
       const nnAppToken = appData?.native_notify_app_token || FALLBACK_NN_APP_TOKEN;
 
@@ -199,6 +229,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         console.error('Native Notify unregister failed:', error);
       }
 
+      await AsyncStorage.removeItem(REGISTERED_CHURCH_SUB_ID);
       await clearStoredAuth();
     } catch (error) { console.error('Logout failed:', error); }
   };
