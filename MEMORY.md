@@ -205,3 +205,15 @@ The profile dates from **2024-10-07** — still valid, so EAS reuses it forever.
 **Also:** `eas.json` build images were pinned to `macos-sequoia-15.6-xcode-26.2` because `import DeclaredAgeRange` needs the iOS 26 SDK. Xcode 16 images cannot compile it.
 
 **EAS log access:** `~/.expo/state.json` sessionSecret is rejected by api.expo.dev (`AUTHENTICATION_ERROR`); `build:view --json` fails too. There is no programmatic way to read a failed build's Gradle log from here — reproduce locally instead (Android SDK is at `~/Library/Android/sdk`, Xcode 27.2 is installed).
+
+## 2026-11-17 19:20:00
+
+## 1.4.0 — "Church App", plans, the locked screen
+
+- **Home Screen name is "Church App"** (`expo.name`). Slug, scheme, bundle id, Android package, owner and EAS project id are unchanged. The store listings are being renamed to "Church App by App My Church" by hand in App Store Connect and the Play Console.
+- **The app must never mention plans, prices, upgrading, unlocking or paying, and must link to nothing that sells.** The app stores do not allow an app to steer people to a purchase outside the store. The one outside link is the button on the church search screen, "Create a Church Group at AppMyChurch.com", which opens the FREE sign-up page `https://appmychurch.com/Signup` in the phone's browser. A church is created and paid for on the website only.
+- The server (repo `app-my-church`, see its `CLAUDE.md` → "Plans") decides everything. The app reads four optional fields on the church object (`GET /app/:appId` at the top level, `GET /user` inside `app`): `plan`, `features` ({groups, videos, events}), `locked`, `lock_message`. A missing `features` value means the tab shows. `plan` is never shown to anyone.
+- `context/AuthContext.tsx` sends **`X-AMC-Client: <platform>/<version>` on every request to our API** (an axios request interceptor scoped to `API_URL`). `GET /user` depends on it: for a locked church the server answers 401 without the header (older versions sign out) and 200 with `app.locked = true` with it. Never remove the header.
+- `app/locked.tsx` shows the server's `lock_message`, "Try again" (`refreshChurch()`) and "Log out". `(tabs)/_layout.tsx` redirects there when signed in and locked. The church is re-read when the app returns to the foreground (at most every 30 s) and at once when any API call is refused with `403 { code: "church_locked" }` (a response interceptor).
+- Not verified on a device: the locked screen, tab hiding and the foreground refresh were checked by `tsc`, both `expo export` bundles and against the live API's answers, not by running the app.
+- The CC Church app (`amc-central-community-church`) has none of this. Its church is on Pro, so nothing changes for it.
