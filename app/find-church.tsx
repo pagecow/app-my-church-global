@@ -7,17 +7,24 @@ import {
   FlatList, 
   TouchableOpacity, 
   Image, 
-  ActivityIndicator 
+  ActivityIndicator,
+  Linking,
 } from 'react-native';
 import axios from 'axios';
 import { useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+// A free sign-up page. It is the only outside link this screen may carry, and
+// it opens in the phone's own browser, not inside the app.
+const CREATE_CHURCH_URL = 'https://appmychurch.com/Signup';
 
 export default function FindChurchScreen() {
   const [search, setSearch] = useState('');
   const [churches, setChurches] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
+  const insets = useSafeAreaInsets();
 
   const API_URL = 'https://appmychurch.com/api/v1';
 
@@ -49,6 +56,12 @@ export default function FindChurchScreen() {
     router.push('/login');
   };
 
+  const openCreateChurch = () => {
+    Linking.openURL(CREATE_CHURCH_URL).catch((error) => {
+      console.error('Failed to open the sign-up page:', error);
+    });
+  };
+
   return (
     <View style={styles.container}>
       <View style={styles.header}>
@@ -67,6 +80,7 @@ export default function FindChurchScreen() {
         </View>
       ) : (
         <FlatList
+          style={styles.list}
           data={churches}
           keyExtractor={(item) => item.id}
           renderItem={({ item }) => (
@@ -98,6 +112,17 @@ export default function FindChurchScreen() {
           }
         />
       )}
+
+      {/* Sits below the list in the normal layout flow, so it never covers a row. */}
+      <View style={[styles.footer, { paddingBottom: 12 + insets.bottom }]}>
+        <TouchableOpacity
+          style={styles.createButton}
+          onPress={openCreateChurch}
+          accessibilityRole="link"
+        >
+          <Text style={styles.createButtonText}>Create a Church Group at AppMyChurch.com</Text>
+        </TouchableOpacity>
+      </View>
     </View>
   );
 }
@@ -130,6 +155,9 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  list: {
+    flex: 1,
   },
   churchItem: {
     flexDirection: 'row',
@@ -167,6 +195,25 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     color: '#999',
+    textAlign: 'center',
+  },
+  footer: {
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    backgroundColor: '#fff',
+    borderTopWidth: 1,
+    borderTopColor: '#eee',
+  },
+  createButton: {
+    backgroundColor: '#007AFF',
+    padding: 15,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  createButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: 'bold',
     textAlign: 'center',
   },
 });

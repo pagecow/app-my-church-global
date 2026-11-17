@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { Tabs } from 'expo-router';
+import { Redirect, Tabs } from 'expo-router';
 import { useRouter } from 'expo-router';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -7,7 +7,7 @@ import { useAuth } from '../../context/AuthContext';
 
 export default function TabLayout() {
   const router = useRouter();
-  const { token, isLoading } = useAuth();
+  const { token, isLoading, features, locked } = useAuth();
 
   useEffect(() => {
     const redirectIfSignedOut = async () => {
@@ -18,6 +18,17 @@ export default function TabLayout() {
 
     redirectIfSignedOut();
   }, [isLoading, token, router]);
+
+  // Signed in, but the church lets nobody in: show the locked screen instead of
+  // the tabs. `/locked` sends people back here once the church is open again,
+  // and the two conditions can never both be true, so they cannot loop.
+  if (!isLoading && token && locked) {
+    return <Redirect href="/locked" />;
+  }
+
+  // A section the church does not have loses its tab. `features` values are
+  // true unless the server said false, so a missing value keeps the tab.
+  const hiddenUnless = (enabled: boolean) => (enabled ? {} : { href: null });
 
   return (
     <Tabs screenOptions={{ tabBarActiveTintColor: '#007AFF', headerShown: false }}>
@@ -33,6 +44,7 @@ export default function TabLayout() {
         options={{
           title: 'Groups',
           tabBarIcon: ({ color }) => <MaterialIcons name="groups" size={28} color={color} />,
+          ...hiddenUnless(features.groups),
         }}
       />
       <Tabs.Screen
@@ -40,6 +52,7 @@ export default function TabLayout() {
         options={{
           title: 'Videos',
           tabBarIcon: ({ color }) => <MaterialIcons name="video-library" size={28} color={color} />,
+          ...hiddenUnless(features.videos),
         }}
       />
       <Tabs.Screen
@@ -47,6 +60,7 @@ export default function TabLayout() {
         options={{
           title: 'Events',
           tabBarIcon: ({ color }) => <MaterialIcons name="event" size={28} color={color} />,
+          ...hiddenUnless(features.events),
         }}
       />
       <Tabs.Screen

@@ -1,6 +1,8 @@
-import React, { createContext, useState, useEffect, useContext } from 'react';
+import React, { createContext, useState, useEffect, useContext, useCallback, useMemo, useRef } from 'react';
+import { AppState, Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
+import Constants from 'expo-constants';
 import { registerIndieID, unregisterIndieDevice } from 'native-notify';
 
 interface User {
@@ -35,6 +37,22 @@ interface AppData {
   groups_enabled?: boolean;
   native_notify_app_id?: number;
   native_notify_app_token?: string | null;
+  /**
+   * Sent by newer servers only, and decided entirely by the server. The app
+   * reads them and never shows `plan` to anyone.
+   */
+  plan?: 'free' | 'starter' | 'pro';
+  /** A missing object or a missing key means that feature is on. */
+  features?: Partial<ChurchFeatures> | null;
+  /** True when the server lets nobody into this church. */
+  locked?: boolean;
+  lock_message?: string | null;
+}
+
+export interface ChurchFeatures {
+  groups: boolean;
+  videos: boolean;
+  events: boolean;
 }
 
 interface AuthContextType {
@@ -42,10 +60,18 @@ interface AuthContextType {
   appData: AppData | null;
   token: string | null;
   isLoading: boolean;
+  /** Which sections the church has. Each one is true unless the server said false. */
+  features: ChurchFeatures;
+  /** True when the signed-in user's church is locked. */
+  locked: boolean;
+  /** The server's text for a locked church, or null when it sent none. */
+  lockMessage: string | null;
   login: (email: string, password: string, appId: string) => Promise<void>;
   signup: (data: { name: string; gender?: string; birth_date: string; email: string; password: string; appId: string }) => Promise<void>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
+  /** Re-reads the church from `GET /user`. Does nothing when signed out. */
+  refreshChurch: () => Promise<void>;
   setUser: React.Dispatch<React.SetStateAction<User | null>>;
 }
 
@@ -54,6 +80,63 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 const API_URL = 'https://appmychurch.com/api/v1';
 const FALLBACK_NN_APP_ID = 23936;
 const FALLBACK_NN_APP_TOKEN = 'kqVaAXbDHXKd5tICC4dDQv';
+
+/** `<platform>/<app version>`, for example `ios/1.4.0`. */
+const AMC_CLIENT = `${Platform.OS}/${Constants.expoConfig?.version ?? 'unknown'}`;
+const AMC_CLIENT_HEADER = 'X-AMC-Client';
+
+/**
+ * Identify this build on every request to our own API.
+ *
+ * `GET /user` depends on it: for a locked church the server answers 401 to a
+ * client that does not send the header (which signs old versions out) and 200
+ * with `app.locked` to a client that does. Without it this version would be
+ * signed out instead of shown the locked screen.
+ *
+ * It is an interceptor limited to our API, not an axios default header, because
+ * the same axios instance also calls other hosts (link previews, Native Notify).
+ */
+axios.interceptors.request.use((config) => {
+  if (typeof config.url === 'string' && config.url.startsWith(API_URL)) {
+    config.headers.set(AMC_CLIENT_HEADER, AMC_CLIENT);
+  }
+  return config;
+});
+
+/**
+ * A church can become locked while someone is using the app. Every API route
+ * then answers 403 with `code: "church_locked"`. When that happens the signed-in
+ * session re-reads the church, which is what shows the locked screen, instead of
+ * leaving the person looking at lists that quietly fail until the next launch.
+ * The provider below sets this while someone is signed in.
+ */
+let onChurchLocked: (() => void) | null = null;
+
+axios.interceptors.response.use(undefined, (error) => {
+  try {
+    const url = error?.config?.url;
+    if (
+      typeof url === 'string' &&
+      url.startsWith(API_URL) &&
+      error?.response?.status === 403 &&
+      error.response.data?.code === 'church_locked'
+    ) {
+      onChurchLocked?.();
+    }
+  } catch {
+    // Never let this get in the way of the request's own error handling.
+  }
+  return Promise.reject(error);
+});
+
+/** `GET /user`. The client header is also set here so this call never depends on the interceptor. */
+const fetchCurrentUser = (token: string) =>
+  axios.get(`${API_URL}/user`, {
+    headers: { Authorization: `Bearer ${token}`, [AMC_CLIENT_HEADER]: AMC_CLIENT },
+  });
+
+/** How often, at most, returning to the foreground re-reads the church. */
+const FOREGROUND_REFRESH_MIN_INTERVAL_MS = 30 * 1000;
 
 /**
  * The church sub id this device is currently registered under.
@@ -72,13 +155,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [token, setToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  const clearStoredAuth = async () => {
+  // The newest token, for code that outlives a render: the foreground listener,
+  // and a church refresh that is still in flight when the session ends.
+  const tokenRef = useRef<string | null>(null);
+  tokenRef.current = token;
+  // When the church was last read from `GET /user` (ms since epoch).
+  const lastChurchReadAtRef = useRef(0);
+
+  const clearStoredAuth = useCallback(async () => {
     await AsyncStorage.removeItem('accessToken');
     await AsyncStorage.removeItem('userData');
+    tokenRef.current = null;
     setToken(null);
     setUser(null);
     setAppData(null);
-  };
+  }, []);
 
   useEffect(() => { loadStoredData(); }, []);
 
@@ -128,7 +219,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setUser(JSON.parse(storedUser));
         // Fetch full user data with app relation
         try {
-          const res = await axios.get(`${API_URL}/user`, { headers: { Authorization: `Bearer ${storedToken}` } });
+          lastChurchReadAtRef.current = Date.now();
+          const res = await fetchCurrentUser(storedToken);
           const fullUser = res.data;
           setUser({
             id: fullUser.id, name: fullUser.name, email: fullUser.email,
@@ -151,7 +243,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const refreshUser = async () => {
     if (!token) return;
     try {
-      const res = await axios.get(`${API_URL}/user`, { headers: { Authorization: `Bearer ${token}` } });
+      lastChurchReadAtRef.current = Date.now();
+      const res = await fetchCurrentUser(token);
       const fullUser = res.data;
       const u = {
         id: fullUser.id, name: fullUser.name, email: fullUser.email,
@@ -169,6 +262,43 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     }
   };
+
+  /**
+   * Re-reads the church (lock state, features and the rest of its data) from
+   * `GET /user`. Does nothing when signed out, and a 401 ends the session the
+   * same way it does everywhere else.
+   */
+  const refreshChurch = useCallback(async () => {
+    const requestToken = tokenRef.current;
+    if (!requestToken) return;
+    lastChurchReadAtRef.current = Date.now();
+    try {
+      const res = await fetchCurrentUser(requestToken);
+      // The session ended, or became someone else's, while this was in flight.
+      if (tokenRef.current !== requestToken) return;
+      if (res.data?.app) setAppData(res.data.app);
+    } catch (e: any) {
+      if (tokenRef.current !== requestToken) return;
+      if (axios.isAxiosError(e) && e.response?.status === 401) {
+        await clearStoredAuth();
+      } else {
+        console.error('Refresh church error:', e);
+      }
+    }
+  }, [clearStoredAuth]);
+
+  // Pick up a church that was locked, reopened or changed while the app was in
+  // the background, without a restart. Only while signed in, and no more than
+  // once per interval: iOS reports 'active' again after every system prompt.
+  useEffect(() => {
+    if (!token) return;
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state !== 'active') return;
+      if (Date.now() - lastChurchReadAtRef.current < FOREGROUND_REFRESH_MIN_INTERVAL_MS) return;
+      refreshChurch();
+    });
+    return () => subscription.remove();
+  }, [token, refreshChurch]);
 
   const login = async (email: string, password: string, appId: string) => {
     try {
@@ -234,8 +364,41 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch (error) { console.error('Logout failed:', error); }
   };
 
+  // The server just refused a request because the church is locked: re-read the
+  // church so the locked screen shows now. At most once every few seconds, since
+  // a screen full of lists fails all at once.
+  useEffect(() => {
+    if (!token) return;
+    onChurchLocked = () => {
+      if (Date.now() - lastChurchReadAtRef.current < 5000) return;
+      refreshChurch();
+    };
+    return () => {
+      onChurchLocked = null;
+    };
+  }, [token, refreshChurch]);
+
+  // Anything the server did not send counts as "on", so an older server, a
+  // failed read or a signed-out state never hides a section.
+  const featureFlags = appData?.features;
+  const features = useMemo<ChurchFeatures>(
+    () => ({
+      groups: featureFlags?.groups !== false,
+      videos: featureFlags?.videos !== false,
+      events: featureFlags?.events !== false,
+    }),
+    [featureFlags?.groups, featureFlags?.videos, featureFlags?.events]
+  );
+  const locked = appData?.locked === true;
+  const lockMessage = typeof appData?.lock_message === 'string' ? appData.lock_message : null;
+
   return (
-    <AuthContext.Provider value={{ user, appData, token, isLoading, login, signup, logout, refreshUser, setUser }}>
+    <AuthContext.Provider
+      value={{
+        user, appData, token, isLoading, features, locked, lockMessage,
+        login, signup, logout, refreshUser, refreshChurch, setUser,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );
