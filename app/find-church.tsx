@@ -14,6 +14,7 @@ import axios from 'axios';
 import { useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { MaterialIcons } from '@expo/vector-icons';
 
 // A free sign-up page. It is the only outside link this screen may carry, and
 // it opens in the phone's own browser, not inside the app.
@@ -119,8 +120,14 @@ export default function FindChurchScreen() {
           style={styles.createButton}
           onPress={openCreateChurch}
           accessibilityRole="link"
+          accessibilityLabel="Create a Church App"
+          accessibilityHint="Opens AppMyChurch.com in your browser"
         >
-          <Text style={styles.createButtonText}>Create a Church Group at AppMyChurch.com</Text>
+          {/* One line: the words, then the "opens outside the app" icon to their right. */}
+          <Text style={styles.createButtonText} numberOfLines={1}>
+            Create a Church App
+          </Text>
+          <MaterialIcons name="open-in-new" size={18} color="#fff" style={styles.createButtonIcon} />
         </TouchableOpacity>
       </View>
     </View>
@@ -208,12 +215,18 @@ const styles = StyleSheet.create({
     backgroundColor: '#007AFF',
     padding: 15,
     borderRadius: 8,
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
   },
   createButtonText: {
     color: '#fff',
     fontSize: 16,
     fontWeight: 'bold',
     textAlign: 'center',
+    flexShrink: 1,
+  },
+  createButtonIcon: {
+    marginLeft: 8,
   },
 });
