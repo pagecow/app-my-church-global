@@ -1,16 +1,23 @@
-import React, { useState, useEffect } from 'react';
-import { StyleSheet, View, Text, TouchableOpacity, Image, TextInput, Alert, ScrollView, ActivityIndicator } from 'react-native';
+import React, { useState } from 'react';
+import { StyleSheet, View, Text, TouchableOpacity, TextInput, Alert, ScrollView, ActivityIndicator } from 'react-native';
 import { useAuth } from '../context/AuthContext';
 import { useRouter } from 'expo-router';
-import { MaterialIcons } from '@expo/vector-icons';
+import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import axios from 'axios';
 import * as ImagePicker from 'expo-image-picker';
+import { Avatar, Button, StackHeader } from '../components/ui';
+import { colors, GUTTER, shapes, TAP, text } from '../lib/theme';
 
 const API_URL = 'https://appmychurch.com/api/v1';
+
+const AVATAR_SIZE = 112;
+const ROW_PADDING = 16;
 
 export default function ProfileScreen() {
   const { user, token, refreshUser, logout } = useAuth();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const [editingName, setEditingName] = useState(false);
   const [newName, setNewName] = useState(user?.name || '');
   const [saving, setSaving] = useState(false);
@@ -132,105 +139,132 @@ export default function ProfileScreen() {
   const profilePic = user?.profile_picture_url;
 
   return (
-    <ScrollView style={styles.container}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <MaterialIcons name="arrow-back" size={24} color="#333" />
-          <Text style={styles.backText}>Back</Text>
-        </TouchableOpacity>
-      </View>
+    <View style={shapes.page}>
+      <StackHeader title="Profile" onBack={() => router.back()} />
 
-      <View style={styles.profileSection}>
-        <TouchableOpacity onPress={handlePickImage} disabled={isUploading}>
+      <ScrollView
+        contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 32 }]}
+        // One tap on Save works even while the keyboard is still up.
+        keyboardShouldPersistTaps="handled"
+      >
+        <View style={styles.photoSection}>
+          <TouchableOpacity
+            onPress={handlePickImage}
+            disabled={isUploading}
+            accessibilityRole="button"
+            accessibilityLabel={profilePic ? 'Change photo' : 'Add profile picture'}
+          >
+            <Avatar uri={profilePic} name={user?.name} size={AVATAR_SIZE} />
+            {isUploading && (
+              <View style={styles.uploadOverlay}>
+                <ActivityIndicator color={colors.white} />
+              </View>
+            )}
+          </TouchableOpacity>
+
           {profilePic ? (
-            <Image source={{ uri: profilePic }} style={styles.profileImage} />
+            <View style={styles.photoActions}>
+              <TouchableOpacity
+                onPress={handlePickImage}
+                disabled={isUploading}
+                style={styles.textAction}
+                accessibilityRole="button"
+              >
+                <Text style={text.link}>Change photo</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={handleRemovePhoto} style={styles.textAction} accessibilityRole="button">
+                <Text style={[text.link, styles.removePhotoText]}>Remove</Text>
+              </TouchableOpacity>
+            </View>
           ) : (
-            <View style={[styles.profileImage, styles.profileFallback]}>
-              {isUploading ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <MaterialIcons name="person" size={60} color="#fff" />
-              )}
-            </View>
+            <TouchableOpacity
+              onPress={handlePickImage}
+              disabled={isUploading}
+              style={styles.textAction}
+              accessibilityRole="button"
+            >
+              <Text style={text.link}>{isUploading ? 'Uploading...' : 'Add profile picture'}</Text>
+            </TouchableOpacity>
           )}
-          {isUploading && (
-            <View style={styles.uploadOverlay}>
-              <ActivityIndicator color="#fff" />
-            </View>
-          )}
-        </TouchableOpacity>
+        </View>
 
-        {profilePic ? (
-          <View style={styles.photoActions}>
-            <TouchableOpacity onPress={handlePickImage} disabled={isUploading}>
-              <Text style={styles.changePhotoText}>Change Photo</Text>
+        <View style={shapes.group}>
+          {editingName ? (
+            <View style={styles.row}>
+              <Text style={text.footnote}>Name</Text>
+              <TextInput
+                style={[shapes.inputOnCard, styles.nameInput]}
+                value={newName}
+                onChangeText={setNewName}
+                autoFocus
+                accessibilityLabel="Name"
+              />
+            </View>
+          ) : (
+            <TouchableOpacity
+              style={[styles.row, styles.rowWithIcon]}
+              onPress={() => setEditingName(true)}
+              accessibilityRole="button"
+              accessibilityLabel={`Name, ${user?.name || ''}`}
+              accessibilityHint="Edits your name"
+            >
+              <View style={styles.rowText}>
+                <Text style={text.footnote}>Name</Text>
+                <Text style={text.bodyLarge}>{user?.name}</Text>
+              </View>
+              <Ionicons name="pencil-outline" size={20} color={colors.inkMuted} />
             </TouchableOpacity>
-            <TouchableOpacity onPress={handleRemovePhoto} style={styles.removeBtn}>
-              <Text style={styles.removePhotoText}>Remove</Text>
-            </TouchableOpacity>
+          )}
+          <View style={[shapes.divider, styles.rowDivider]} />
+          <View style={styles.row}>
+            <Text style={text.footnote}>Email</Text>
+            <Text style={text.bodyLarge}>{user?.email}</Text>
           </View>
-        ) : (
-          <TouchableOpacity onPress={handlePickImage} disabled={isUploading}>
-            <Text style={styles.addPhotoText}>{isUploading ? 'Uploading...' : 'Add profile picture'}</Text>
-          </TouchableOpacity>
-        )}
-      </View>
+        </View>
 
-      <View style={styles.nameSection}>
         {editingName ? (
-          <View style={styles.editNameRow}>
-            <TextInput style={styles.nameInput} value={newName} onChangeText={setNewName} autoFocus />
-            <TouchableOpacity onPress={handleSaveName} disabled={saving}>
-              <Text style={styles.saveBtn}>{saving ? 'Saving...' : 'Save'}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity onPress={() => { setEditingName(false); setNewName(user?.name || ''); }}>
-              <Text style={styles.cancelBtn}>Cancel</Text>
+          <View style={styles.editActions}>
+            <Button label="Save" onPress={handleSaveName} loading={saving} />
+            <TouchableOpacity
+              onPress={() => { setEditingName(false); setNewName(user?.name || ''); }}
+              style={styles.textAction}
+              accessibilityRole="button"
+            >
+              <Text style={text.link}>Cancel</Text>
             </TouchableOpacity>
           </View>
-        ) : (
-          <TouchableOpacity style={styles.nameRow} onPress={() => setEditingName(true)}>
-            <Text style={styles.nameText}>{user?.name}</Text>
-            <MaterialIcons name="edit" size={20} color="#666" />
-          </TouchableOpacity>
-        )}
-        <Text style={styles.emailText}>{user?.email}</Text>
-      </View>
+        ) : null}
 
-      <TouchableOpacity style={styles.deleteBtn} onPress={handleDeleteAccount}>
-        <Text style={styles.deleteBtnText}>Delete Account</Text>
-      </TouchableOpacity>
-    </ScrollView>
+        <Button label="Delete Account" kind="danger" onPress={handleDeleteAccount} style={styles.deleteBtn} />
+      </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#fff' },
-  header: { paddingTop: 55, paddingHorizontal: 16, paddingBottom: 10 },
-  backBtn: { flexDirection: 'row', alignItems: 'center' },
-  backText: { fontSize: 16, marginLeft: 4 },
-  profileSection: { alignItems: 'center', paddingVertical: 30 },
-  profileImage: { width: 120, height: 120, borderRadius: 60, marginBottom: 16 },
-  profileFallback: { backgroundColor: '#3b82f6', justifyContent: 'center', alignItems: 'center' },
+  content: {
+    width: '100%',
+    maxWidth: 560,
+    alignSelf: 'center',
+    paddingHorizontal: GUTTER,
+    paddingTop: 12,
+  },
+  photoSection: { alignItems: 'center', marginBottom: 16 },
   uploadOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.3)',
-    borderRadius: 60,
+    backgroundColor: colors.scrim,
+    borderRadius: AVATAR_SIZE / 2,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  photoActions: { flexDirection: 'row', gap: 20, alignItems: 'center' },
-  changePhotoText: { color: '#007AFF', fontSize: 15, fontWeight: '600' },
-  removeBtn: { paddingVertical: 8 },
-  removePhotoText: { color: '#ef4444', fontSize: 15 },
-  addPhotoText: { color: '#007AFF', fontSize: 15, fontWeight: '600' },
-  nameSection: { paddingHorizontal: 20, paddingVertical: 16, borderTopWidth: 1, borderTopColor: '#eee' },
-  nameRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  nameText: { fontSize: 20, fontWeight: 'bold' },
-  emailText: { fontSize: 15, color: '#666', marginTop: 4 },
-  editNameRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  nameInput: { flex: 1, borderWidth: 1, borderColor: '#ddd', borderRadius: 8, padding: 10, fontSize: 16 },
-  saveBtn: { color: '#007AFF', fontWeight: 'bold', fontSize: 15 },
-  cancelBtn: { color: '#666', fontSize: 15 },
-  deleteBtn: { marginTop: 40, marginHorizontal: 20, backgroundColor: '#ef4444', padding: 16, borderRadius: 8, alignItems: 'center' },
-  deleteBtnText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
+  photoActions: { flexDirection: 'row', gap: 8, alignItems: 'center' },
+  textAction: { minHeight: TAP, paddingHorizontal: 12, alignItems: 'center', justifyContent: 'center' },
+  removePhotoText: { color: colors.red },
+  row: { minHeight: 64, paddingHorizontal: ROW_PADDING, paddingVertical: 10, justifyContent: 'center', gap: 2 },
+  rowWithIcon: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-start', gap: 12 },
+  rowText: { flex: 1, minWidth: 0, gap: 2 },
+  rowDivider: { marginLeft: ROW_PADDING },
+  nameInput: { marginTop: 4 },
+  editActions: { marginTop: 16, gap: 4 },
+  deleteBtn: { marginTop: 40 },
 });

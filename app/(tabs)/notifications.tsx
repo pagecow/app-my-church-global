@@ -1,10 +1,12 @@
 import React, { useEffect, useState } from 'react';
-import { StyleSheet, View, Text, FlatList, ActivityIndicator, RefreshControl, TouchableOpacity } from 'react-native';
+import { StyleSheet, View, Text, FlatList, RefreshControl, TouchableOpacity } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../context/AuthContext';
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import Navbar from '../../components/Navbar';
 import { useRouter } from 'expo-router';
+import { EmptyState, Loading, StackHeader } from '../../components/ui';
+import { colors, GUTTER, radius, shapes, text } from '../../lib/theme';
 
 const API_URL = 'https://appmychurch.com/api/v1';
 
@@ -73,12 +75,19 @@ export default function NotificationsScreen() {
     const data = parsePushData(item?.pushData);
     const groupId = data?.groupId ? String(data.groupId) : undefined;
 
-    // Group events are handled before post routing: an invite or a join request
-    // has no postId, so the old guard would silently swallow the tap.
-    if (data?.type === 'group_invite' && groupId) {
+    // Group events are handled before post routing: neither has a postId, so
+    // the old guard would silently swallow the tap.
+    //
+    // `group_added` is informational - membership is created at invite time, so
+    // there is no invite to accept and no inviteId to pass. `group_invite` is
+    // the legacy type, still handled so a push queued before the change lands.
+    if ((data?.type === 'group_added' || data?.type === 'group_invite') && groupId) {
       router.push({
         pathname: '/group/[id]',
-        params: { id: groupId, inviteId: data.inviteId ? String(data.inviteId) : undefined },
+        params:
+          data?.type === 'group_invite' && data?.inviteId
+            ? { id: groupId, inviteId: String(data.inviteId) }
+            : { id: groupId },
       });
       return;
     }
@@ -121,50 +130,104 @@ export default function NotificationsScreen() {
     finally { setLoading(false); setRefreshing(false); }
   };
 
-  if (loading && !refreshing) {
-    return <View style={styles.loading}><ActivityIndicator size="large" color="#007AFF" /></View>;
-  }
-
   return (
-    <View style={styles.container}>
-      <Navbar />
-      <FlatList
-        data={notifications}
-        keyExtractor={(_, i) => i.toString()}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); fetchNotifications(); }} />}
-        renderItem={({ item }) => {
-          const pushData = parsePushData(item.pushData);
-          const preview = stripHtml(pushData.reply || pushData.comment || item.message || '');
-          const canOpen = Boolean(pushData.postId);
-          return (
-          <TouchableOpacity
-            style={styles.notifItem}
-            onPress={() => openNotificationTarget(item)}
-            disabled={!canOpen}
-            activeOpacity={0.75}
-          >
-            <View style={styles.notifDot} />
-            <View style={{ flex: 1 }}>
-              <Text style={styles.notifTitle}>{item.title || 'Notification'}</Text>
-              <Text style={styles.notifMessage}>{preview}</Text>
-              {item.date && <Text style={styles.notifTime}>{formatTimeAgo(item.date)}</Text>}
-            </View>
-          </TouchableOpacity>
-        );
-        }}
-        ListEmptyComponent={<Text style={styles.empty}>No notifications yet.</Text>}
-      />
+    <View style={shapes.page}>
+      <StackHeader title="Notifications" onBack={() => router.back()} />
+      {loading && !refreshing ? (
+        <Loading />
+      ) : (
+        <FlatList
+          data={notifications}
+          keyExtractor={(_, i) => i.toString()}
+          contentContainerStyle={styles.listContent}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={() => { setRefreshing(true); fetchNotifications(); }}
+              tintColor={colors.inkMuted}
+            />
+          }
+          ItemSeparatorComponent={RowDivider}
+          renderItem={({ item, index }) => {
+            const pushData = parsePushData(item.pushData);
+            const preview = stripHtml(pushData.reply || pushData.comment || item.message || '');
+            // A row opens a post, or the group it is about. Anything else is only a message.
+            const canOpen =
+              Boolean(pushData.postId) ||
+              (Boolean(pushData.groupId) &&
+                ['group_added', 'group_invite', 'group_request'].includes(pushData.type));
+            return (
+              <TouchableOpacity
+                style={[
+                  styles.row,
+                  index === 0 ? styles.rowFirst : null,
+                  index === notifications.length - 1 ? styles.rowLast : null,
+                ]}
+                onPress={() => openNotificationTarget(item)}
+                disabled={!canOpen}
+                activeOpacity={0.75}
+                accessibilityRole={canOpen ? 'button' : undefined}
+              >
+                <View style={styles.dot} />
+                <View style={styles.rowText}>
+                  <View style={styles.rowTop}>
+                    <Text style={[text.headline, styles.rowTitle]}>{item.title || 'Notification'}</Text>
+                    {item.date ? <Text style={text.footnote}>{formatTimeAgo(item.date)}</Text> : null}
+                  </View>
+                  {preview ? <Text style={styles.rowMessage}>{preview}</Text> : null}
+                </View>
+                {canOpen ? (
+                  <Ionicons name="chevron-forward" size={18} color={colors.inkFaint} style={styles.chevron} />
+                ) : null}
+              </TouchableOpacity>
+            );
+          }}
+          ListEmptyComponent={
+            <EmptyState
+              icon="notifications-outline"
+              title="No notifications yet"
+              hint="When there is something new for you, it will show up here."
+            />
+          }
+        />
+      )}
     </View>
   );
 }
 
+/** The line between two rows. It sits on white so the block of rows stays one piece. */
+function RowDivider() {
+  return (
+    <View style={styles.dividerWrap}>
+      <View style={[shapes.divider, styles.dividerLine]} />
+    </View>
+  );
+}
+
+const DOT = 10;
+const ROW_GAP = 12;
+
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#fff' },
-  loading: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  notifItem: { flexDirection: 'row', padding: 16, borderBottomWidth: 1, borderBottomColor: '#f0f0f0', alignItems: 'flex-start' },
-  notifDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: '#3b82f6', marginTop: 5, marginRight: 12 },
-  notifTitle: { fontWeight: '600', fontSize: 15 },
-  notifMessage: { fontSize: 14, color: '#444', marginTop: 2 },
-  notifTime: { fontSize: 12, color: '#999', marginTop: 4 },
-  empty: { textAlign: 'center', padding: 40, color: '#999' },
+  listContent: { paddingHorizontal: GUTTER, paddingTop: 4, paddingBottom: 24 },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: ROW_GAP,
+    minHeight: 60,
+    paddingVertical: 14,
+    paddingLeft: 16,
+    paddingRight: 12,
+    backgroundColor: colors.card,
+  },
+  rowFirst: { borderTopLeftRadius: radius.group, borderTopRightRadius: radius.group },
+  rowLast: { borderBottomLeftRadius: radius.group, borderBottomRightRadius: radius.group },
+  /* Lined up with the middle of the title's first line. */
+  dot: { width: DOT, height: DOT, borderRadius: DOT / 2, backgroundColor: colors.azure, marginTop: 6 },
+  rowText: { flex: 1, minWidth: 0, gap: 3 },
+  rowTop: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
+  rowTitle: { flex: 1 },
+  rowMessage: { ...text.secondary, fontSize: 15, lineHeight: 21, color: colors.inkSoft },
+  chevron: { marginTop: 2 },
+  dividerWrap: { backgroundColor: colors.card },
+  dividerLine: { marginLeft: 16 + DOT + ROW_GAP },
 });

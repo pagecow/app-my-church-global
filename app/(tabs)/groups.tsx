@@ -1,20 +1,21 @@
 import React, { useCallback, useState } from 'react';
 import {
-  ActivityIndicator,
   Alert,
   RefreshControl,
-  SectionList,
+  ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
-import { MaterialIcons } from '@expo/vector-icons';
+import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from '../../context/AuthContext';
 import Navbar from '../../components/Navbar';
+import { Button, Chip, EmptyState, Loading, Notice, SectionTitle, Tile } from '../../components/ui';
 import { Group, groupsApi, groupsErrorMessage } from '../../lib/groups';
+import { colors, GUTTER, shapes, text } from '../../lib/theme';
 
 interface Section {
   title: string;
@@ -72,26 +73,22 @@ export default function GroupsScreen() {
   );
 
   if (loading && !refreshing) {
-    return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" color="#007AFF" />
-      </View>
-    );
+    return <Loading />;
   }
 
   const mine = groups.filter((g) => g.membership_state === 'active');
   const rest = groups.filter((g) => g.membership_state !== 'active');
 
   const sections: Section[] = [];
-  if (mine.length) sections.push({ title: 'My Groups', data: mine });
-  if (rest.length) sections.push({ title: 'Discover', data: rest });
+  if (mine.length) sections.push({ title: 'My groups', data: mine });
+  if (rest.length) sections.push({ title: 'More groups', data: rest });
 
   const requestAccess = async (group: Group) => {
     if (!token) return;
     setRequestingId(group.id);
     try {
       await groupsApi.requestToJoin(token, group.id);
-      // Reflect it immediately: the row flips to "Request pending" without a
+      // Reflect it immediately: the row flips to "Requested" without a
       // round trip, and the next refresh confirms it from the server.
       setGroups((prev) =>
         prev.map((g) => (g.id === group.id ? { ...g, has_pending_request: true } : g))
@@ -106,81 +103,65 @@ export default function GroupsScreen() {
   const renderRow = (group: Group) => {
     const label = stateLabel(group);
     const isMember = group.membership_state === 'active';
+    const isPrivate = group.visibility === 'private';
     return (
       <TouchableOpacity
-        style={styles.row}
+        style={[styles.row, isMember ? styles.rowMember : null]}
         activeOpacity={0.75}
         onPress={() => router.push(`/group/${group.id}`)}
       >
-        <View style={styles.rowIcon}>
-          <MaterialIcons
-            name={group.visibility === 'private' ? 'lock' : 'public'}
-            size={20}
-            color="#3b82f6"
-          />
-        </View>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.rowTitle} numberOfLines={1}>
+        <Tile uri={group.cover_image_url} name={group.name} tinted={isMember} />
+        <View style={styles.rowText}>
+          <Text style={text.headline} numberOfLines={1}>
             {group.name}
           </Text>
-          {group.description ? (
-            <Text style={styles.rowSubtitle} numberOfLines={2}>
-              {group.description}
+          <View style={styles.meta}>
+            {isPrivate ? <Ionicons name="lock-closed" size={13} color={colors.inkMuted} /> : null}
+            <Text style={[text.secondary, styles.metaText]} numberOfLines={1}>
+              {typeof group.member_count === 'number'
+                ? `${isPrivate ? 'Private · ' : ''}${group.member_count} member${
+                    group.member_count === 1 ? '' : 's'
+                  }`
+                : isPrivate
+                ? 'Private group'
+                : 'Public group'}
             </Text>
-          ) : null}
-          <Text style={styles.rowMeta}>
-            {typeof group.member_count === 'number'
-              ? `${group.member_count} member${group.member_count === 1 ? '' : 's'}`
-              : group.visibility === 'private'
-              ? 'Private group'
-              : 'Public group'}
-          </Text>
+          </View>
         </View>
         {isMember ? (
-          <View style={[styles.chip, styles.chipActive]}>
-            <Text style={[styles.chipText, styles.chipTextActive]}>{label}</Text>
+          <View style={styles.trailing}>
+            {/* Everyone under "My groups" is a member; only a role worth knowing gets a label. */}
+            {label === 'Member' ? null : <Chip label={label} />}
+            <Ionicons name="chevron-forward" size={18} color={colors.inkFaint} />
           </View>
         ) : group.has_pending_request || group.membership_state === 'pending' ? (
-          <View style={styles.chip}>
-            <Text style={styles.chipText}>Pending</Text>
-          </View>
+          <Chip label="Requested" />
         ) : (
-          <TouchableOpacity
-            style={styles.requestBtn}
-            disabled={requestingId === group.id}
+          <Button
+            label={isPrivate ? 'Ask to join' : 'Join'}
+            kind={isPrivate ? 'tinted' : 'primary'}
+            size="small"
+            loading={requestingId === group.id}
             onPress={() => requestAccess(group)}
-          >
-            {requestingId === group.id ? (
-              <ActivityIndicator size="small" color="#fff" />
-            ) : (
-              <Text style={styles.requestBtnText}>
-                {group.visibility === 'private' ? 'Request access' : 'Join'}
-              </Text>
-            )}
-          </TouchableOpacity>
+            style={styles.joinButton}
+          />
         )}
       </TouchableOpacity>
     );
   };
 
   return (
-    <View style={styles.container}>
-      <Navbar />
+    <View style={shapes.page}>
+      <Navbar
+        title="Groups"
+        onAdd={isAdmin ? () => router.push('/group/create') : undefined}
+        addLabel="Create group"
+      />
       {error ? (
-        <View style={styles.errorBox}>
-          <Text style={styles.errorText}>{error}</Text>
-          <TouchableOpacity onPress={load}>
-            <Text style={styles.retry}>Retry</Text>
-          </TouchableOpacity>
-        </View>
+        <Notice message={error} actionLabel="Retry" onAction={load} style={styles.notice} />
       ) : null}
-      <SectionList
-        sections={sections}
-        keyExtractor={(item) => String(item.id)}
-        renderSectionHeader={({ section }) => (
-          <Text style={styles.sectionHeader}>{section.title}</Text>
-        )}
-        renderItem={({ item }) => renderRow(item)}
+      <ScrollView
+        contentContainerStyle={styles.content}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -188,112 +169,57 @@ export default function GroupsScreen() {
               setRefreshing(true);
               load();
             }}
+            tintColor={colors.inkMuted}
           />
         }
-        ListEmptyComponent={
-          <View style={styles.center}>
-            <MaterialIcons name="groups" size={44} color="#ccc" />
-            <Text style={styles.emptyText}>
-              {error ? 'Groups could not be loaded.' : 'No groups yet.'}
-            </Text>
-            {isAdmin && !error ? (
-              <Text style={styles.emptyHint}>Create the first group below.</Text>
-            ) : null}
+      >
+        {sections.length === 0 ? (
+          <EmptyState
+            icon="people-outline"
+            title={error ? 'Groups could not be loaded.' : 'No groups yet.'}
+            hint={isAdmin && !error ? 'Tap the plus button above to create the first group.' : undefined}
+          />
+        ) : null}
+        {sections.map((section, sectionIndex) => (
+          <View key={section.title}>
+            <SectionTitle style={sectionIndex === 0 ? styles.firstTitle : styles.nextTitle}>
+              {section.title}
+            </SectionTitle>
+            {/* One white block per section, with a line between its rows. */}
+            <View style={shapes.group}>
+              {section.data.map((group, index) => (
+                <React.Fragment key={String(group.id)}>
+                  {index > 0 ? <View style={[shapes.divider, styles.divider]} /> : null}
+                  {renderRow(group)}
+                </React.Fragment>
+              ))}
+            </View>
           </View>
-        }
-        contentContainerStyle={{ paddingBottom: isAdmin ? 96 : 24 }}
-      />
-      {isAdmin ? (
-        <TouchableOpacity style={styles.fab} onPress={() => router.push('/group/create')}>
-          <MaterialIcons name="add" size={26} color="#fff" />
-          <Text style={styles.fabText}>Create group</Text>
-        </TouchableOpacity>
-      ) : null}
+        ))}
+      </ScrollView>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f8f8f8' },
-  center: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 30 },
-  emptyText: { color: '#999', fontSize: 15, marginTop: 10, textAlign: 'center' },
-  emptyHint: { color: '#bbb', fontSize: 13, marginTop: 4 },
-  sectionHeader: {
-    backgroundColor: '#f8f8f8',
-    paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 8,
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#888',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
+  notice: { marginTop: 4, marginBottom: 8 },
+  content: { paddingHorizontal: GUTTER, paddingBottom: 24 },
+  firstTitle: { marginTop: 10 },
+  nextTitle: { marginTop: 22 },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#fff',
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
     gap: 12,
-  },
-  rowIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#eff6ff',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  rowTitle: { fontSize: 16, fontWeight: '600', color: '#111' },
-  rowSubtitle: { fontSize: 13, color: '#666', marginTop: 2 },
-  rowMeta: { fontSize: 12, color: '#999', marginTop: 4 },
-  requestBtn: {
-    backgroundColor: '#1d4ed8',
+    minHeight: 68,
+    paddingVertical: 11,
     paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: 16,
-    minWidth: 84,
-    alignItems: 'center',
   },
-  requestBtnText: { color: '#fff', fontSize: 12, fontWeight: '700' },
-  chip: {
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 12,
-    backgroundColor: '#f1f5f9',
-  },
-  chipActive: { backgroundColor: '#dbeafe' },
-  chipText: { fontSize: 11, fontWeight: '600', color: '#64748b' },
-  chipTextActive: { color: '#1d4ed8' },
-  errorBox: {
-    backgroundColor: '#fef2f2',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  errorText: { color: '#b91c1c', fontSize: 13, flex: 1 },
-  retry: { color: '#b91c1c', fontWeight: '700', marginLeft: 12 },
-  fab: {
-    position: 'absolute',
-    right: 18,
-    bottom: 24,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#3b82f6',
-    paddingHorizontal: 18,
-    paddingVertical: 12,
-    borderRadius: 26,
-    gap: 6,
-    shadowColor: '#000',
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 4,
-  },
-  fabText: { color: '#fff', fontWeight: '700', fontSize: 15 },
+  rowMember: { paddingRight: 10 },
+  rowText: { flex: 1, minWidth: 0, gap: 2 },
+  meta: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  metaText: { flexShrink: 1 },
+  trailing: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  /* Clears the group's picture: 12 (row padding) + 46 (picture) + 12 (gap). */
+  divider: { marginLeft: 70 },
+  joinButton: { minWidth: 60 },
 });

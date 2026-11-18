@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
 import {
-  ActivityIndicator,
   Alert,
   Image,
   KeyboardAvoidingView,
@@ -12,13 +11,15 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { MaterialIcons } from '@expo/vector-icons';
+import { Ionicons } from '@expo/vector-icons';
 import { VideoView, useVideoPlayer } from 'expo-video';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
+import { Avatar, Button, CircleButton, SheetHeader } from '../components/ui';
+import { CARD_GAP, colors, GUTTER, radius, shapes, TAP, text } from '../lib/theme';
 
 const API_URL = 'https://appmychurch.com/api/v1';
 const UGC_TERMS_ACK_KEY = 'ugcTermsAcceptedGlobalApp_v1';
@@ -292,191 +293,161 @@ export default function CreatePostScreen() {
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      style={styles.container}
+      style={shapes.page}
     >
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <MaterialIcons name="arrow-back" size={24} color="#333" />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Create Post</Text>
-        <View style={styles.headerRight}>
-          <Image
-            source={user?.profile_picture_url ? { uri: user.profile_picture_url } : require('../assets/icon.png')}
-            style={styles.avatar}
-          />
-          <TouchableOpacity
-            style={[styles.headerPostBtn, postDisabled && styles.headerPostBtnDisabled]}
-            onPress={submitPost}
-            disabled={postDisabled}
-          >
-            {isSubmitting ? <ActivityIndicator color="#fff" size="small" /> : <Text style={styles.headerPostBtnText}>Post</Text>}
-          </TouchableOpacity>
-        </View>
-      </View>
+      <SheetHeader
+        title="New Post"
+        onCancel={() => router.back()}
+        actionLabel="Post"
+        onAction={submitPost}
+        actionLoading={isSubmitting}
+        actionDisabled={postDisabled}
+      />
 
-      <ScrollView contentContainerStyle={styles.contentContainer} keyboardShouldPersistTaps="handled">
-        <TextInput
-          style={styles.input}
-          placeholder="Share your thoughts..."
-          value={content}
-          onChangeText={setContent}
-          multiline
-          scrollEnabled
-          textAlignVertical="top"
-          editable={!isSubmitting}
-        />
-
-        {assets.length > 0 ? (
-          <View style={styles.previewCard}>
-            <Text style={styles.previewLabel}>
-              {assets.length} attachment{assets.length > 1 ? 's' : ''} selected
+      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+        <View style={shapes.card}>
+          <View style={styles.author}>
+            <Avatar uri={user?.profile_picture_url} name={user?.name} size={40} />
+            <Text style={[text.headline, styles.authorName]} numberOfLines={1}>
+              {user?.name}
             </Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.previewRow}>
-              {assets.map((asset, index) => (
-                <View key={`${asset.uri}-${index}`} style={styles.previewThumbWrap}>
-                  {asset.type === 'video' ? (
-                    <View style={styles.videoThumb}>
-                      <VideoPreviewTile uri={asset.uri} />
-                      <View style={styles.videoBadge}>
-                        <MaterialIcons name="play-circle-filled" size={18} color="#fff" />
-                        <Text style={styles.videoBadgeText}>Video</Text>
-                      </View>
-                    </View>
-                  ) : (
-                    <Image source={{ uri: asset.uri }} style={styles.previewThumb} />
-                  )}
-                  <TouchableOpacity
-                    onPress={() => setAssets((prev) => prev.filter((_, i) => i !== index))}
-                    style={styles.removeThumbBtn}
-                  >
-                    <MaterialIcons name="close" size={14} color="#fff" />
-                  </TouchableOpacity>
-                </View>
-              ))}
-            </ScrollView>
-            <TouchableOpacity onPress={() => setAssets([])} style={styles.removeAttachmentBtn}>
-              <Text style={styles.removeAttachmentText}>Remove All</Text>
-            </TouchableOpacity>
           </View>
-        ) : null}
+
+          <TextInput
+            style={styles.input}
+            placeholder="Share your thoughts..."
+            placeholderTextColor={colors.inkFaint}
+            value={content}
+            onChangeText={setContent}
+            multiline
+            scrollEnabled
+            textAlignVertical="top"
+            editable={!isSubmitting}
+          />
+
+          {assets.length > 0 ? (
+            <View>
+              <View style={styles.previewHead}>
+                <Text style={[text.footnote, styles.previewLabel]}>
+                  {assets.length} attachment{assets.length > 1 ? 's' : ''} selected
+                </Text>
+                <TouchableOpacity
+                  onPress={() => setAssets([])}
+                  style={styles.removeAll}
+                  accessibilityRole="button"
+                >
+                  <Text style={styles.removeAllText}>Remove All</Text>
+                </TouchableOpacity>
+              </View>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.previewRow}>
+                {assets.map((asset, index) => (
+                  <View key={`${asset.uri}-${index}`} style={styles.previewThumbWrap}>
+                    {asset.type === 'video' ? (
+                      <View style={styles.videoThumb}>
+                        <VideoPreviewTile uri={asset.uri} />
+                        <View style={styles.videoBadge}>
+                          <Ionicons name="play" size={12} color={colors.white} />
+                          <Text style={styles.videoBadgeText}>Video</Text>
+                        </View>
+                      </View>
+                    ) : (
+                      <Image source={{ uri: asset.uri }} style={styles.previewThumb} />
+                    )}
+                    <CircleButton
+                      icon="close"
+                      kind="dark"
+                      size={24}
+                      onPress={() => setAssets((prev) => prev.filter((_, i) => i !== index))}
+                      accessibilityLabel="Remove attachment"
+                      style={styles.removeThumb}
+                    />
+                  </View>
+                ))}
+              </ScrollView>
+            </View>
+          ) : null}
+
+          <View style={[shapes.divider, styles.pickersDivider]} />
+          <View style={styles.pickers}>
+            <Button
+              label="Add Photo(s)"
+              icon="image-outline"
+              kind="quiet"
+              size="small"
+              onPress={pickPhotos}
+              disabled={isSubmitting}
+              style={styles.tapHeight}
+            />
+            <Button
+              label="Add Video"
+              icon="videocam-outline"
+              kind="quiet"
+              size="small"
+              onPress={pickVideo}
+              disabled={isSubmitting || hasVideoSelected}
+              style={styles.tapHeight}
+            />
+          </View>
+        </View>
 
         {!hasAcceptedUgcTerms ? (
-          <View style={styles.termsNotice}>
-            <Text style={styles.termsNoticeText}>
+          <View style={[shapes.card, styles.terms]}>
+            <Text style={styles.termsText}>
               You must agree to the Terms of Use and Community Guidelines before your first post.
             </Text>
-            <View style={styles.termsBtnRow}>
-              <TouchableOpacity style={styles.termsLinkBtn} onPress={() => router.push('/terms')}>
-                <Text style={styles.termsLinkBtnText}>Review Terms</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.termsAgreeBtn} onPress={() => void acceptUgcTerms()}>
-                <Text style={styles.termsAgreeBtnText}>I Agree</Text>
-              </TouchableOpacity>
+            <View style={styles.termsButtons}>
+              <Button
+                label="Review Terms"
+                kind="quiet"
+                size="small"
+                onPress={() => router.push('/terms')}
+                style={styles.tapHeight}
+              />
+              <Button
+                label="I Agree"
+                size="small"
+                onPress={() => void acceptUgcTerms()}
+                style={styles.tapHeight}
+              />
             </View>
           </View>
         ) : null}
-
-        <View style={styles.actionRow}>
-          <TouchableOpacity style={styles.attachBtn} onPress={pickPhotos} disabled={isSubmitting}>
-            <MaterialIcons name="image" size={20} color="#007AFF" />
-            <Text style={styles.attachText}>Add Photo(s)</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.attachBtn} onPress={pickVideo} disabled={isSubmitting || hasVideoSelected}>
-            <MaterialIcons name="videocam" size={20} color="#007AFF" />
-            <Text style={styles.attachText}>Add Video</Text>
-          </TouchableOpacity>
-        </View>
       </ScrollView>
     </KeyboardAvoidingView>
   );
 }
 
+const THUMB = 96;
+
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#fff' },
-  header: {
-    paddingTop: 55,
-    paddingHorizontal: 16,
-    paddingBottom: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#eee',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'flex-start'
-  },
-  backBtn: { flexDirection: 'row', alignItems: 'center' },
-  headerRight: { flexDirection: 'row', alignItems: 'center', gap: 12, marginLeft: 'auto' },
-  avatar: { width: 34, height: 34, borderRadius: 17 },
-  headerPostBtn: {
-    backgroundColor: '#007AFF',
-    borderRadius: 999,
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-    minWidth: 62,
-    alignItems: 'center',
-  },
-  headerPostBtnDisabled: { opacity: 0.45 },
-  headerPostBtnText: { color: '#fff', fontWeight: '700', fontSize: 15 },
-  headerTitle: { fontSize: 16, fontWeight: '600', color: '#222', marginLeft: 12 },
-  contentContainer: { padding: 16, gap: 14, paddingBottom: 28 },
+  content: { paddingHorizontal: GUTTER, paddingTop: 8, paddingBottom: 32, gap: CARD_GAP },
+
+  author: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 16, paddingTop: 14 },
+  authorName: { flex: 1 },
   input: {
-    minHeight: 170,
+    ...text.bodyLarge,
+    minHeight: 150,
     maxHeight: 240,
-    borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 10,
-    padding: 12,
-    fontSize: 16,
-    lineHeight: 22,
-    color: '#222',
-    backgroundColor: '#fff',
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 12,
   },
-  actionRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-start', gap: 10, flexWrap: 'wrap' },
-  attachBtn: {
+
+  previewHead: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    paddingVertical: 8,
-    paddingHorizontal: 10,
-    borderWidth: 1,
-    borderColor: '#dbeafe',
-    borderRadius: 999,
-    backgroundColor: '#eff6ff',
+    justifyContent: 'space-between',
+    paddingLeft: 16,
+    paddingRight: 8,
   },
-  attachText: { color: '#007AFF', fontWeight: '600', fontSize: 15 },
-  previewCard: { borderWidth: 1, borderColor: '#e5e5e5', borderRadius: 10, padding: 10, backgroundColor: '#fafafa' },
-  previewLabel: { fontSize: 13, color: '#666', marginBottom: 8 },
-  termsNotice: {
-    borderWidth: 1,
-    borderColor: '#dbeafe',
-    backgroundColor: '#eff6ff',
-    borderRadius: 10,
-    padding: 10,
-    gap: 8,
-  },
-  termsNoticeText: { fontSize: 13, color: '#1f2937', lineHeight: 19 },
-  termsBtnRow: { flexDirection: 'row', gap: 10, flexWrap: 'wrap' },
-  termsLinkBtn: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: '#007AFF',
-    backgroundColor: 'transparent',
-  },
-  termsLinkBtnText: { color: '#007AFF', fontSize: 13, fontWeight: '700' },
-  termsAgreeBtn: {
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-    borderRadius: 999,
-    backgroundColor: '#007AFF',
-  },
-  termsAgreeBtnText: { color: '#fff', fontSize: 13, fontWeight: '700' },
-  previewImage: { width: '100%', height: 220, borderRadius: 10 },
-  previewFileName: { fontSize: 14, color: '#333' },
-  previewRow: { gap: 10 },
+  previewLabel: { flex: 1 },
+  removeAll: { minHeight: TAP, paddingHorizontal: 8, justifyContent: 'center' },
+  removeAllText: { fontSize: 15, fontWeight: '600', color: colors.red },
+  previewRow: { gap: 10, paddingHorizontal: 16, paddingBottom: 14 },
   previewThumbWrap: { position: 'relative' },
-  previewThumb: { width: 90, height: 90, borderRadius: 10, backgroundColor: '#f3f4f6' },
-  videoThumb: { position: 'relative' },
+  previewThumb: { width: THUMB, height: THUMB, borderRadius: radius.md, backgroundColor: colors.fill },
+  /* A video does not always clip to its own rounded corners, so its holder does the clipping. */
+  videoThumb: { width: THUMB, height: THUMB, borderRadius: radius.md, overflow: 'hidden' },
   videoBadge: {
     position: 'absolute',
     left: 6,
@@ -486,22 +457,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 4,
-    backgroundColor: 'rgba(0,0,0,0.55)',
-    borderRadius: 999,
+    backgroundColor: 'rgba(0, 0, 0, 0.55)',
+    borderRadius: radius.pill,
     paddingVertical: 3,
   },
-  videoBadgeText: { color: '#fff', fontSize: 11, fontWeight: '700' },
-  removeThumbBtn: {
-    position: 'absolute',
-    top: 4,
-    right: 4,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    borderRadius: 999,
-    width: 18,
-    height: 18,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  removeAttachmentBtn: { marginTop: 8 },
-  removeAttachmentText: { color: '#ef4444', fontWeight: '600', fontSize: 14 },
+  videoBadgeText: { color: colors.white, fontSize: 11, fontWeight: '700' },
+  /* The dark circle sits just inside the picture's corner; the area that takes the tap is larger. */
+  removeThumb: { position: 'absolute', top: -6, right: -6 },
+
+  pickersDivider: { marginLeft: 16 },
+  pickers: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingHorizontal: 12, paddingVertical: 10 },
+  /* A small button, made tall enough for a finger. */
+  tapHeight: { minHeight: TAP, borderRadius: TAP / 2 },
+
+  terms: { padding: 16, gap: 12 },
+  termsText: { ...text.secondary, fontSize: 15, lineHeight: 21, color: colors.inkSoft },
+  termsButtons: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
 });

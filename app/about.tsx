@@ -1,16 +1,19 @@
 import React, { useEffect, useState } from 'react';
-import { StyleSheet, View, Text, ScrollView, Image, ActivityIndicator, TouchableOpacity } from 'react-native';
+import { StyleSheet, View, Text, ScrollView } from 'react-native';
 import { useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../context/AuthContext';
-import { MaterialIcons } from '@expo/vector-icons';
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Loading, StackHeader, Tile } from '../components/ui';
+import { CARD_GAP, colors, GUTTER, shapes, text } from '../lib/theme';
 
 const API_URL = 'https://appmychurch.com/api/v1';
 
 export default function AboutScreen() {
   const { appData } = useAuth();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const [appInfo, setAppInfo] = useState<any>(appData);
   const [loading, setLoading] = useState(!appData);
 
@@ -30,7 +33,7 @@ export default function AboutScreen() {
   };
 
   if (loading) {
-    return <View style={styles.loading}><ActivityIndicator size="large" color="#007AFF" /></View>;
+    return <Loading />;
   }
 
   const aboutText = appInfo?.about_church?.replace(/<[^>]*>/g, '') || '';
@@ -38,50 +41,42 @@ export default function AboutScreen() {
   const locationStr = locationParts.join(', ');
 
   return (
-    <ScrollView style={styles.container}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <MaterialIcons name="arrow-back" size={24} color="#333" />
-          <Text style={styles.backText}>Back</Text>
-        </TouchableOpacity>
-      </View>
+    <View style={shapes.page}>
+      <StackHeader title="About Our Church" onBack={() => router.back()} />
 
-      {appInfo?.logo_url && (
-        <View style={styles.logoContainer}>
-          <Image source={{ uri: appInfo.logo_url }} style={styles.logo} resizeMode="contain" />
-        </View>
-      )}
+      <ScrollView contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 32 }]}>
+        {appInfo ? (
+          <View style={styles.identity}>
+            <Tile uri={appInfo.logo_url} name={appInfo.name} size={88} fit="contain" />
+            {appInfo.name ? (
+              <Text style={[text.title, styles.name]} accessibilityRole="header">
+                {appInfo.name}
+              </Text>
+            ) : null}
+            {locationStr ? <Text style={styles.location}>{locationStr}</Text> : null}
+          </View>
+        ) : null}
 
-      <View style={styles.divider} />
-
-      <Text style={styles.title}>About Our Church</Text>
-
-      {aboutText ? (
-        <Text style={styles.aboutText}>{aboutText}</Text>
-      ) : (
-        <View style={styles.fallback}>
-          <Text style={styles.churchName}>{appInfo?.name || ''}</Text>
-          {locationStr ? (
-            <Text style={styles.location}>Location:{'\n'}{locationStr}</Text>
-          ) : null}
-        </View>
-      )}
-    </ScrollView>
+        {aboutText ? (
+          <View style={[shapes.card, styles.aboutCard]}>
+            <Text style={text.body}>{aboutText}</Text>
+          </View>
+        ) : null}
+      </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#fff' },
-  loading: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  header: { paddingTop: 55, paddingHorizontal: 16, paddingBottom: 10 },
-  backBtn: { flexDirection: 'row', alignItems: 'center' },
-  backText: { fontSize: 16, marginLeft: 4 },
-  logoContainer: { alignItems: 'center', paddingVertical: 16 },
-  logo: { width: 80, height: 80 },
-  divider: { width: '33%', height: 2, backgroundColor: '#007AFF', alignSelf: 'center', marginVertical: 12, borderRadius: 1 },
-  title: { fontSize: 20, fontWeight: 'bold', textAlign: 'center', marginBottom: 20 },
-  aboutText: { fontSize: 15, lineHeight: 24, paddingHorizontal: 16, paddingBottom: 40 },
-  fallback: { paddingHorizontal: 16, paddingBottom: 40 },
-  churchName: { fontSize: 18, fontWeight: 'bold', marginBottom: 8 },
-  location: { fontSize: 15, color: '#666', lineHeight: 22 },
+  content: {
+    width: '100%',
+    maxWidth: 640,
+    alignSelf: 'center',
+    paddingHorizontal: GUTTER,
+    paddingTop: 12,
+  },
+  identity: { alignItems: 'center', paddingHorizontal: 8, marginBottom: CARD_GAP + 8 },
+  name: { marginTop: 16, textAlign: 'center' },
+  location: { ...text.body, color: colors.inkMuted, textAlign: 'center', marginTop: 4 },
+  aboutCard: { padding: 20 },
 });

@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
 import {
-  ActivityIndicator,
   Alert,
   Image,
   KeyboardAvoidingView,
@@ -13,12 +12,15 @@ import {
   ScrollView,
   useWindowDimensions,
 } from 'react-native';
-import { MaterialIcons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
+import { Button, StackHeader, Tile } from '../components/ui';
+import { colors, GUTTER, shapes, TAP, text } from '../lib/theme';
 
 type Step = 'email' | 'otp' | 'password';
+
+const LOGO_SIZE = 88;
 
 export default function ForgotPasswordScreen() {
   const { height } = useWindowDimensions();
@@ -144,106 +146,106 @@ export default function ForgotPasswordScreen() {
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      style={styles.container}
+      style={shapes.page}
     >
-      <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
-        <MaterialIcons name="arrow-back" size={28} color="#333" />
-      </TouchableOpacity>
+      <StackHeader onBack={() => router.back()} />
 
       <ScrollView
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
         contentContainerStyle={[styles.scrollContent, { paddingBottom: Math.max(24, height * 0.25) }]}
       >
-        <View style={styles.innerContainer}>
-          <View style={styles.logoContainer}>
-            {churchLogo ? (
-              <Image source={{ uri: churchLogo }} style={styles.logo} resizeMode="contain" />
+        <View style={styles.column}>
+          <View style={styles.brand}>
+            {/* The church's own picture once it is known; the app's icon until then. */}
+            {appId ? (
+              <Tile uri={churchLogo} name={churchName} size={LOGO_SIZE} fit="contain" />
             ) : (
-              <Image source={require('../assets/icon.png')} style={styles.logo} resizeMode="contain" />
+              <Image source={require('../assets/icon.png')} style={styles.appIcon} />
             )}
-            <Text style={styles.title}>{churchName}</Text>
-          </View>
-
-          <View style={styles.formContainer}>
-            <Text style={styles.stepTitle}>Forgot Password</Text>
+            <Text style={[text.title, styles.title]} accessibilityRole="header">
+              Forgot Password
+            </Text>
             {step === 'email' ? (
-              <Text style={styles.stepDescription}>Enter your email to receive a verification code.</Text>
+              <Text style={styles.subtitle}>Enter your email to receive a verification code.</Text>
             ) : step === 'otp' ? (
-              <Text style={styles.stepDescription}>Enter the code sent to your email.</Text>
+              <Text style={styles.subtitle}>Enter the code sent to your email.</Text>
             ) : (
-              <Text style={styles.stepDescription}>Create your new password.</Text>
-            )}
-
-            <Text style={styles.label}>Email</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Enter your email"
-              value={email}
-              onChangeText={setEmail}
-              autoCapitalize="none"
-              keyboardType="email-address"
-              editable={step === 'email'}
-            />
-
-            {step !== 'email' && (
-              <>
-                <Text style={styles.label}>Verification Code</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="Enter verification code"
-                  value={otp}
-                  onChangeText={setOtp}
-                  keyboardType="number-pad"
-                  editable={step !== 'password'}
-                />
-              </>
-            )}
-
-            {step === 'password' && (
-              <>
-                <Text style={styles.label}>New Password</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="Enter new password"
-                  value={password}
-                  onChangeText={setPassword}
-                  secureTextEntry
-                />
-                <Text style={styles.label}>Confirm Password</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="Confirm new password"
-                  value={confirmPassword}
-                  onChangeText={setConfirmPassword}
-                  secureTextEntry
-                />
-              </>
-            )}
-
-            {step === 'email' && (
-              <TouchableOpacity style={styles.button} onPress={sendOtp} disabled={isLoading}>
-                {isLoading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Send Code</Text>}
-              </TouchableOpacity>
-            )}
-
-            {step === 'otp' && (
-              <>
-                <TouchableOpacity style={styles.button} onPress={verifyOtp} disabled={isLoading}>
-                  {isLoading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Verify Code</Text>}
-                </TouchableOpacity>
-                <TouchableOpacity onPress={sendOtp} style={styles.secondaryLink} disabled={isLoading}>
-                  <Text style={styles.secondaryText}>Resend Code</Text>
-                </TouchableOpacity>
-              </>
-            )}
-
-            {step === 'password' && (
-              <TouchableOpacity style={styles.button} onPress={resetPassword} disabled={isLoading}>
-                {isLoading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Reset Password</Text>}
-              </TouchableOpacity>
+              <Text style={styles.subtitle}>Create your new password.</Text>
             )}
           </View>
+
+          <Text style={styles.label}>Email</Text>
+          <TextInput
+            style={[shapes.input, step !== 'email' && styles.inputLocked]}
+            placeholder="Enter your email"
+            placeholderTextColor={colors.inkFaint}
+            value={email}
+            onChangeText={setEmail}
+            autoCapitalize="none"
+            keyboardType="email-address"
+            editable={step === 'email'}
+          />
+
+          {step !== 'email' && (
+            <>
+              <Text style={styles.label}>Verification Code</Text>
+              <TextInput
+                style={[shapes.input, step === 'password' && styles.inputLocked]}
+                placeholder="Enter verification code"
+                placeholderTextColor={colors.inkFaint}
+                value={otp}
+                onChangeText={setOtp}
+                keyboardType="number-pad"
+                editable={step !== 'password'}
+              />
+            </>
+          )}
+
+          {step === 'password' && (
+            <>
+              <Text style={styles.label}>New Password</Text>
+              <TextInput
+                style={shapes.input}
+                placeholder="Enter new password"
+                placeholderTextColor={colors.inkFaint}
+                value={password}
+                onChangeText={setPassword}
+                secureTextEntry
+              />
+              <Text style={styles.label}>Confirm Password</Text>
+              <TextInput
+                style={shapes.input}
+                placeholder="Confirm new password"
+                placeholderTextColor={colors.inkFaint}
+                value={confirmPassword}
+                onChangeText={setConfirmPassword}
+                secureTextEntry
+              />
+            </>
+          )}
+
+          {step === 'email' && (
+            <Button label="Send Code" onPress={sendOtp} loading={isLoading} style={styles.submit} />
+          )}
+
+          {step === 'otp' && (
+            <>
+              <Button label="Verify Code" onPress={verifyOtp} loading={isLoading} style={styles.submit} />
+              <TouchableOpacity
+                onPress={sendOtp}
+                style={styles.link}
+                disabled={isLoading}
+                accessibilityRole="button"
+              >
+                <Text style={text.link}>Resend Code</Text>
+              </TouchableOpacity>
+            </>
+          )}
+
+          {step === 'password' && (
+            <Button label="Reset Password" onPress={resetPassword} loading={isLoading} style={styles.submit} />
+          )}
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -251,86 +253,54 @@ export default function ForgotPasswordScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#fff',
-  },
   scrollContent: {
     flexGrow: 1,
-    paddingTop: 90,
+    paddingHorizontal: GUTTER,
+    paddingTop: 12,
   },
-  backButton: {
-    position: 'absolute',
-    top: 55,
-    left: 20,
-    zIndex: 10,
-    padding: 10,
+  column: {
+    width: '100%',
+    maxWidth: 440,
+    alignSelf: 'center',
   },
-  innerContainer: {
-    justifyContent: 'center',
-    padding: 20,
-  },
-  logoContainer: {
+  brand: {
     alignItems: 'center',
-    marginBottom: 40,
+    marginBottom: 12,
   },
-  logo: {
-    width: 100,
-    height: 100,
-    marginBottom: 10,
+  appIcon: {
+    width: LOGO_SIZE,
+    height: LOGO_SIZE,
+    borderRadius: Math.round(LOGO_SIZE * 0.28),
   },
   title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#333',
+    marginTop: 16,
     textAlign: 'center',
   },
-  formContainer: {
-    width: '100%',
-  },
-  stepTitle: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: '#222',
-    marginBottom: 8,
-  },
-  stepDescription: {
-    fontSize: 14,
-    color: '#666',
-    marginBottom: 8,
+  subtitle: {
+    ...text.body,
+    color: colors.inkMuted,
+    textAlign: 'center',
+    marginTop: 4,
   },
   label: {
-    fontSize: 16,
-    color: '#666',
-    marginBottom: 5,
-    marginTop: 12,
+    ...text.secondary,
+    fontWeight: '500',
+    color: colors.inkSoft,
+    marginTop: 16,
+    marginBottom: 6,
+    marginLeft: 4,
   },
-  input: {
-    borderWidth: 1,
-    borderColor: '#ddd',
-    padding: 15,
-    borderRadius: 8,
-    fontSize: 16,
+  // A step that is already done: still shown, no longer editable.
+  inputLocked: {
+    color: colors.inkMuted,
   },
-  button: {
-    backgroundColor: '#007AFF',
-    padding: 15,
-    borderRadius: 8,
+  submit: {
+    marginTop: 28,
+  },
+  link: {
+    minHeight: TAP,
+    marginTop: 8,
     alignItems: 'center',
-    marginTop: 24,
-  },
-  buttonText: {
-    color: '#fff',
-    fontSize: 17,
-    fontWeight: '700',
-  },
-  secondaryLink: {
-    alignItems: 'center',
-    marginTop: 14,
-  },
-  secondaryText: {
-    color: '#007AFF',
-    fontSize: 14,
-    fontWeight: '600',
+    justifyContent: 'center',
   },
 });

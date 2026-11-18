@@ -1,10 +1,15 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Alert, StyleSheet, View, Text, Image, TouchableOpacity, Pressable, Modal, FlatList, TextInput, Platform, Keyboard, Dimensions, Linking, ActivityIndicator } from 'react-native';
-import { MaterialIcons } from '@expo/vector-icons';
+import { Ionicons } from '@expo/vector-icons';
 import { VideoView, useVideoPlayer } from 'expo-video';
+import { router } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import axios from 'axios';
+import { Avatar, Button, CircleButton } from './ui';
+import { CARD_GAP, colors, GUTTER, radius, TAP } from '../lib/theme';
 
-// Local prayer hand images
+// The app's own praying-hands artwork. It is drawn in one colour on a clear
+// background, so `tintColor` can recolour it: grey until tapped, gold after.
 const prayingHandFilled = require('../assets/prayingHand.png');
 const prayingHandOutline = require('../assets/prayingHandOutline.png');
 
@@ -19,6 +24,10 @@ interface PostCardProps {
 
 const API_URL = 'https://appmychurch.com/api/v1';
 const SCREEN_WIDTH = Dimensions.get('window').width;
+/** A post is a card with side margins, so its photos and videos are narrower than the screen. */
+const MEDIA_WIDTH = SCREEN_WIDTH - GUTTER * 2;
+/** A very tall or very wide photo would make one post fill the screen, so it is letterboxed instead. */
+const clampAspectRatio = (ratio: number) => Math.min(Math.max(ratio, 0.8), 2.2);
 const LINK_PREVIEW_API = 'https://api.microlink.io';
 
 const formatTimeDifference = (dateStr: string) => {
@@ -167,6 +176,7 @@ export const PostCard: React.FC<PostCardProps> = ({
   const galleryRef = useRef<FlatList<any>>(null);
   const fullscreenRef = useRef<FlatList<any>>(null);
   const autoOpenedRef = useRef(false);
+  const insets = useSafeAreaInsets();
 
   const headers = { Authorization: `Bearer ${token}` };
   const mediaItems = (post?.post_media || []).filter((m: any) => m?.media_url);
@@ -658,8 +668,6 @@ export const PostCard: React.FC<PostCardProps> = ({
     Alert.alert('Comment Options', 'Choose an action', options);
   };
 
-  if (postDeleted) return null;
-
   const findCommentAuthorName = (commentId: string) => {
     const parentComment = comments.find((c) => c.id === commentId);
     return parentComment?.church_user?.name || 'this comment';
@@ -707,35 +715,122 @@ export const PostCard: React.FC<PostCardProps> = ({
     };
   }, [sharedUrl]);
 
+  // Every hook is above this line. Returning earlier than the last hook makes
+  // React throw the moment a post is deleted or reported.
+  if (postDeleted) return null;
+
+  // Group posts carry the group back-referenced so the same card is never
+  // mistaken between Home and a group feed, and can route back to the group.
+  const groupName = post.groups?.name || post.group?.name || null;
+  const groupId = post.group_id || post.groups?.id || post.group?.id || null;
+
+  const commentLabel =
+    totalCommentCount > 0 ? formatCountLabel(totalCommentCount, 'comment', 'comments') : 'Comment';
+  const draft = showReplyThread ? replyText : newComment;
+  const canSend = !isSubmittingComment && draft.trim().length > 0;
+
+  const closeComments = () => {
+    setShowComments(false);
+    setShowReplyThread(false);
+    setActiveParentComment(null);
+    setReplyText('');
+  };
+
+  /** Like, love and pray under a comment or a reply. */
+  const renderCommentReactions = (item: any, isReply: boolean) => {
+    const isLiked = item.comment_likes?.some((l: any) => l.church_userId === userId);
+    const isHearted = item.comment_hearts?.some((h: any) => h.church_userId === userId);
+    const isPrayed = item.comment_praying?.some((p: any) => p.church_userId === userId);
+    const likes = item.comment_likes?.length || 0;
+    const hearts = item.comment_hearts?.length || 0;
+    const prays = item.comment_praying?.length || 0;
+
+    return (
+      <View style={styles.commentReactions}>
+        <TouchableOpacity
+          style={styles.reactionItem}
+          onPress={() => handleCommentLike(item.id, isReply)}
+          hitSlop={REACTION_HIT_SLOP}
+          accessibilityRole="button"
+          accessibilityLabel={`Like, ${likes}`}
+          accessibilityState={{ selected: !!isLiked }}
+        >
+          <Ionicons
+            name={isLiked ? 'thumbs-up' : 'thumbs-up-outline'}
+            size={18}
+            color={isLiked ? colors.like : colors.inkMuted}
+          />
+          {likes > 0 ? <Text style={styles.reactionCount}>{likes}</Text> : null}
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.reactionItem}
+          onPress={() => handleCommentHeart(item.id, isReply)}
+          hitSlop={REACTION_HIT_SLOP}
+          accessibilityRole="button"
+          accessibilityLabel={`Love, ${hearts}`}
+          accessibilityState={{ selected: !!isHearted }}
+        >
+          <Ionicons
+            name={isHearted ? 'heart' : 'heart-outline'}
+            size={18}
+            color={isHearted ? colors.love : colors.inkMuted}
+          />
+          {hearts > 0 ? <Text style={styles.reactionCount}>{hearts}</Text> : null}
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.reactionItem}
+          onPress={() => handleCommentPray(item.id, isReply)}
+          hitSlop={REACTION_HIT_SLOP}
+          accessibilityRole="button"
+          accessibilityLabel={`Praying, ${prays}`}
+          accessibilityState={{ selected: !!isPrayed }}
+        >
+          <Image
+            source={isPrayed ? prayingHandFilled : prayingHandOutline}
+            style={[styles.prayIconSmall, { tintColor: isPrayed ? colors.pray : colors.inkMuted }]}
+          />
+          {prays > 0 ? <Text style={styles.reactionCount}>{prays}</Text> : null}
+        </TouchableOpacity>
+      </View>
+    );
+  };
+
   return (
     <View style={styles.card}>
       <View style={styles.header}>
-        {profilePic ? (
-          <Image source={{ uri: profilePic }} style={styles.avatar} />
-        ) : (
-          <View style={[styles.avatar, styles.avatarFallback]}>
-            <Text style={styles.avatarText}>{(post.church_users?.name || '?')[0].toUpperCase()}</Text>
-          </View>
-        )}
+        <Avatar uri={profilePic} name={post.church_users?.name} size={40} />
         <View style={styles.headerText}>
-          <Text style={styles.userName}>{post.church_users?.name}</Text>
+          <Text style={styles.userName} numberOfLines={1}>
+            {post.church_users?.name}
+          </Text>
           <View style={styles.metaLine}>
             <Text style={styles.timeAgo}>{formatTimeDifference(post.created_at)}</Text>
-            {/* Group posts are visually marked so the same card in Home and in a
-                group feed is never mistaken for the other. */}
-            {post.groups?.name || post.group?.name ? (
+            {groupName ? (
               <>
                 <Text style={styles.metaSeparator}>·</Text>
-                <MaterialIcons name="groups" size={12} color="#1d4ed8" />
-                <Text style={styles.groupBadge} numberOfLines={1}>
-                  {post.groups?.name || post.group?.name}
-                </Text>
+                <TouchableOpacity
+                  style={styles.groupBadgeBtn}
+                  disabled={!groupId}
+                  onPress={() => groupId && router.push(`/group/${groupId}`)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Open group ${groupName}`}
+                >
+                  <Ionicons name="people" size={13} color={colors.azureText} />
+                  <Text style={styles.groupBadge} numberOfLines={1}>
+                    {groupName}
+                  </Text>
+                </TouchableOpacity>
               </>
             ) : null}
           </View>
         </View>
-        <TouchableOpacity onPress={openPostOptions}>
-          <MaterialIcons name="more-vert" size={22} color="#444" />
+        <TouchableOpacity
+          style={styles.optionsBtn}
+          onPress={openPostOptions}
+          accessibilityRole="button"
+          accessibilityLabel="Post options"
+        >
+          <Ionicons name="ellipsis-horizontal" size={20} color={colors.inkMuted} />
         </TouchableOpacity>
       </View>
 
@@ -749,15 +844,20 @@ export const PostCard: React.FC<PostCardProps> = ({
             scrollEnabled={false}
           />
           {isLong && (
-            <TouchableOpacity onPress={() => setExpanded(!expanded)}>
-              <Text style={styles.readMore}>{expanded ? 'Read Less...' : 'Read More...'}</Text>
+            <TouchableOpacity onPress={() => setExpanded(!expanded)} style={styles.readMoreBtn}>
+              <Text style={styles.readMore}>{expanded ? 'Show less' : 'Read more'}</Text>
             </TouchableOpacity>
           )}
         </View>
       ) : null}
 
       {sharedUrl ? (
-        <TouchableOpacity style={styles.linkPreviewCard} onPress={() => openExternalLink(sharedUrl)} activeOpacity={0.85}>
+        <TouchableOpacity
+          style={styles.linkPreviewCard}
+          onPress={() => openExternalLink(sharedUrl)}
+          activeOpacity={0.8}
+          accessibilityRole="link"
+        >
           <View style={styles.linkPreviewTextWrap}>
             <Text style={styles.linkPreviewLabel} numberOfLines={1}>
               {linkPreview?.siteName || sharedHost || 'Shared Link'}
@@ -768,10 +868,12 @@ export const PostCard: React.FC<PostCardProps> = ({
             {linkPreviewLoading ? (
               <Text style={styles.linkPreviewHint}>Loading preview...</Text>
             ) : linkPreview?.description ? (
-              <Text style={styles.linkPreviewDescription} numberOfLines={2}>{linkPreview.description}</Text>
+              <Text style={styles.linkPreviewDescription} numberOfLines={2}>
+                {linkPreview.description}
+              </Text>
             ) : null}
-            <Text style={styles.linkPreviewHint}>Tap to open</Text>
           </View>
+          <Ionicons name="open-outline" size={18} color={colors.inkMuted} />
         </TouchableOpacity>
       ) : null}
 
@@ -785,10 +887,10 @@ export const PostCard: React.FC<PostCardProps> = ({
             showsHorizontalScrollIndicator={false}
             keyExtractor={(item, index) => `${item.id || item.media_url}-${index}`}
             onMomentumScrollEnd={(event) => {
-              const index = Math.round(event.nativeEvent.contentOffset.x / SCREEN_WIDTH);
+              const index = Math.round(event.nativeEvent.contentOffset.x / MEDIA_WIDTH);
               setActiveMediaIndex(index);
             }}
-            renderItem={({ item, index }) => (
+            renderItem={({ item }) =>
               item.media_type?.startsWith('video/') ? (
                 <View style={styles.postVideoWrap}>
                   <InlinePostVideo uri={item.media_url} style={styles.postVideo} />
@@ -805,15 +907,15 @@ export const PostCard: React.FC<PostCardProps> = ({
                 >
                   <Image
                     source={{ uri: item.media_url }}
-                    style={[styles.postImage, { aspectRatio: postImageAspectRatio }]}
+                    style={[styles.postImage, { aspectRatio: clampAspectRatio(postImageAspectRatio) }]}
                     resizeMode="contain"
                   />
                 </TouchableOpacity>
               )
-            )}
+            }
           />
           {mediaItems.length > 1 ? (
-            <View style={styles.galleryDots}>
+            <View style={styles.galleryDots} pointerEvents="none">
               {mediaItems.map((_: any, idx: number) => (
                 <View key={`dot-${idx}`} style={[styles.dot, idx === activeMediaIndex && styles.dotActive]} />
               ))}
@@ -822,62 +924,88 @@ export const PostCard: React.FC<PostCardProps> = ({
         </View>
       )}
 
-      {/* Counts row */}
-      <View style={styles.countsRow}>
-        <View style={styles.countsLeft}>
-          {likeCount > 0 && <Text style={styles.countText}>{likeCount} likes</Text>}
-          {heartCount > 0 && <Text style={styles.countText}>{heartCount} hearts</Text>}
-          {prayCount > 0 && <Text style={styles.countText}>{prayCount} praying</Text>}
-        </View>
-        {totalCommentCount > 0 && (
-          <TouchableOpacity onPress={openComments}>
-            <Text style={styles.countText}>
-              {formatCountLabel(totalCommentCount, 'comment', 'comments')}
-            </Text>
-          </TouchableOpacity>
-        )}
+      {/* One row: the three reactions with their counts, then comments. */}
+      <View style={styles.actions}>
+        <TouchableOpacity
+          style={styles.actionBtn}
+          onPress={handleLike}
+          accessibilityRole="button"
+          accessibilityLabel={`Like, ${likeCount}`}
+          accessibilityState={{ selected: liked }}
+        >
+          <Ionicons
+            name={liked ? 'thumbs-up' : 'thumbs-up-outline'}
+            size={22}
+            color={liked ? colors.like : colors.inkSoft}
+          />
+          {likeCount > 0 ? <Text style={[styles.actionCount, liked && styles.actionCountOn]}>{likeCount}</Text> : null}
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.actionBtn}
+          onPress={handleHeart}
+          accessibilityRole="button"
+          accessibilityLabel={`Love, ${heartCount}`}
+          accessibilityState={{ selected: hearted }}
+        >
+          <Ionicons
+            name={hearted ? 'heart' : 'heart-outline'}
+            size={23}
+            color={hearted ? colors.love : colors.inkSoft}
+          />
+          {heartCount > 0 ? (
+            <Text style={[styles.actionCount, hearted && styles.actionCountOn]}>{heartCount}</Text>
+          ) : null}
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.actionBtn}
+          onPress={handlePray}
+          accessibilityRole="button"
+          accessibilityLabel={`Praying, ${prayCount}`}
+          accessibilityState={{ selected: prayed }}
+        >
+          <Image
+            source={prayed ? prayingHandFilled : prayingHandOutline}
+            style={[styles.prayIcon, { tintColor: prayed ? colors.pray : colors.inkSoft }]}
+          />
+          {prayCount > 0 ? <Text style={[styles.actionCount, prayed && styles.actionCountOn]}>{prayCount}</Text> : null}
+        </TouchableOpacity>
+        <View style={styles.actionsSpacer} />
+        <TouchableOpacity
+          style={styles.actionBtn}
+          onPress={openComments}
+          accessibilityRole="button"
+          accessibilityLabel={totalCommentCount > 0 ? `${commentLabel}, open comments` : 'Write a comment'}
+        >
+          <Ionicons name="chatbubble-outline" size={21} color={colors.inkSoft} />
+          <Text style={styles.actionCount}>{commentLabel}</Text>
+        </TouchableOpacity>
       </View>
 
-      {/* Action buttons */}
-      <View style={styles.actions}>
-        <TouchableOpacity style={styles.actionBtn} onPress={handleLike}>
-          <MaterialIcons name={liked ? 'thumb-up' : 'thumb-up-off-alt'} size={22} color="#3b82f6" />
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.actionBtn} onPress={handleHeart}>
-          <MaterialIcons name={hearted ? 'favorite' : 'favorite-border'} size={22} color="#ef4444" />
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.actionBtn} onPress={handlePray}>
-          <Image source={prayed ? prayingHandFilled : prayingHandOutline} style={styles.prayIcon} />
-        </TouchableOpacity>
-        <TouchableOpacity style={[styles.actionBtn, { marginLeft: 'auto' }]} onPress={openComments}>
-          <MaterialIcons name="chat-bubble-outline" size={22} color="#3b82f6" />
-          <Text style={styles.commentLabel}>Comment</Text>
-        </TouchableOpacity>
-      </View>
-      {/* Comment / Reply Modal */}
-      <Modal visible={showComments || showReplyThread} animationType="slide" presentationStyle="pageSheet">
-        <View style={{ flex: 1 }}>
-          <View style={styles.commentModal}>
+      {/* Comments, and the replies to one comment, share this sheet. */}
+      <Modal
+        visible={showComments || showReplyThread}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => (showReplyThread ? setShowReplyThread(false) : closeComments())}
+      >
+        <View style={styles.sheetRoot}>
+          <View style={[styles.commentModal, { paddingTop: Platform.OS === 'ios' ? 10 : insets.top + 6 }]}>
             <View style={styles.commentHeader}>
               {showReplyThread ? (
                 <>
-                  <TouchableOpacity onPress={() => setShowReplyThread(false)} style={styles.backButton}>
-                    <MaterialIcons name="arrow-back" size={24} color="#333" />
-                  </TouchableOpacity>
-                  <Text style={styles.commentTitle}>Reply thread</Text>
-                  <View style={{ width: 40 }} />
+                  <CircleButton
+                    icon="chevron-back"
+                    onPress={() => setShowReplyThread(false)}
+                    accessibilityLabel="Back to comments"
+                  />
+                  <Text style={styles.commentTitle}>Replies</Text>
+                  <View style={styles.headerSpacer} />
                 </>
               ) : (
                 <>
+                  <View style={styles.headerSpacer} />
                   <Text style={styles.commentTitle}>Comments</Text>
-                  <TouchableOpacity onPress={() => {
-                    setShowComments(false);
-                    setShowReplyThread(false);
-                    setActiveParentComment(null);
-                    setReplyText('');
-                  }}>
-                    <MaterialIcons name="close" size={28} color="#333" />
-                  </TouchableOpacity>
+                  <CircleButton icon="close" onPress={closeComments} accessibilityLabel="Close comments" />
                 </>
               )}
             </View>
@@ -887,86 +1015,62 @@ export const PostCard: React.FC<PostCardProps> = ({
                 keyboardShouldPersistTaps="always"
                 data={activeParentComment.replies || []}
                 keyExtractor={(item) => item.id}
+                contentContainerStyle={styles.commentList}
                 ListHeaderComponent={() => (
-                  <View style={styles.replyParentContainer}>
-                    <View style={styles.commentItem}>
-                      {activeParentComment.church_user?.profile_picture_url ? (
-                        <Image source={{ uri: activeParentComment.church_user.profile_picture_url }} style={styles.commentAvatar} />
-                      ) : (
-                        <View style={[styles.commentAvatar, styles.avatarFallback]}>
-                          <Text style={styles.avatarTextSmall}>{(activeParentComment.church_user?.name || '?')[0].toUpperCase()}</Text>
-                        </View>
-                      )}
-                      <View style={{ flex: 1 }}>
-                        <View style={styles.commentNameRow}>
-                          <Text style={styles.commentUser}>@{activeParentComment.church_user?.name}</Text>
-                          <Text style={styles.commentTime}>{formatTimeDifference(activeParentComment.createdAt)}</Text>
-                        </View>
-                        <TextInput
-                          style={[styles.commentContent, styles.readOnlySelectableText]}
-                          value={stripHtml(activeParentComment.content || '')}
-                          editable={false}
-                          multiline
-                          scrollEnabled={false}
-                        />
+                  <View style={styles.replyParent}>
+                    <Avatar
+                      uri={activeParentComment.church_user?.profile_picture_url}
+                      name={activeParentComment.church_user?.name}
+                      size={36}
+                    />
+                    <View style={styles.commentBody}>
+                      <View style={styles.commentNameRow}>
+                        <Text style={styles.commentUser} numberOfLines={1}>
+                          {activeParentComment.church_user?.name}
+                        </Text>
+                        <Text style={styles.commentTime}>{formatTimeDifference(activeParentComment.createdAt)}</Text>
                       </View>
+                      <TextInput
+                        style={[styles.commentContent, styles.readOnlySelectableText]}
+                        value={stripHtml(activeParentComment.content || '')}
+                        editable={false}
+                        multiline
+                        scrollEnabled={false}
+                      />
                     </View>
                   </View>
                 )}
-                renderItem={({ item }) => {
-                  const isLiked = item.comment_likes?.some((l: any) => l.church_userId === userId);
-                  const isHearted = item.comment_hearts?.some((h: any) => h.church_userId === userId);
-                  const isPrayed = item.comment_praying?.some((p: any) => p.church_userId === userId);
-
-                  return (
-                    <View style={styles.replyItemNested}>
-                      {item.church_user?.profile_picture_url ? (
-                        <Image source={{ uri: item.church_user.profile_picture_url }} style={styles.replyAvatar} />
-                      ) : (
-                        <View style={[styles.replyAvatar, styles.avatarFallback]}>
-                          <Text style={styles.avatarTextSmall}>{(item.church_user?.name || '?')[0].toUpperCase()}</Text>
-                        </View>
-                      )}
-                      <View style={{ flex: 1 }}>
-                        <View style={styles.commentNameRow}>
-                          <Text style={styles.commentUser}>{item.church_user?.name}</Text>
-                          <Text style={styles.commentTime}>{formatTimeDifference(item.createdAt)}</Text>
-                          <TouchableOpacity style={styles.commentOptionsBtn} onPress={() => openCommentOptions(item)}>
-                            <MaterialIcons name="more-vert" size={16} color="#555" />
-                          </TouchableOpacity>
-                        </View>
-                        <TextInput
-                          style={[styles.commentContent, styles.readOnlySelectableText]}
-                          value={stripHtml(item.content || '')}
-                          editable={false}
-                          multiline
-                          scrollEnabled={false}
-                        />
-                        <View style={styles.commentReactions}>
-                          <View style={styles.reactionItem}>
-                            <TouchableOpacity onPress={() => handleCommentLike(item.id, true)}>
-                              <MaterialIcons name={isLiked ? 'thumb-up' : 'thumb-up-off-alt'} size={14} color="#3b82f6" />
-                            </TouchableOpacity>
-                            {item.comment_likes?.length > 0 ? <Text style={styles.reactionCount}>{item.comment_likes.length}</Text> : null}
-                          </View>
-                          <View style={styles.reactionItem}>
-                            <TouchableOpacity onPress={() => handleCommentHeart(item.id, true)}>
-                              <MaterialIcons name={isHearted ? 'favorite' : 'favorite-border'} size={14} color="#ef4444" />
-                            </TouchableOpacity>
-                            {item.comment_hearts?.length > 0 ? <Text style={styles.reactionCount}>{item.comment_hearts.length}</Text> : null}
-                          </View>
-                          <View style={styles.reactionItem}>
-                            <TouchableOpacity onPress={() => handleCommentPray(item.id, true)}>
-                              <Image source={isPrayed ? prayingHandFilled : prayingHandOutline} style={{ width: 14, height: 14 }} />
-                            </TouchableOpacity>
-                            {item.comment_praying?.length > 0 ? <Text style={styles.reactionCount}>{item.comment_praying.length}</Text> : null}
-                          </View>
-                        </View>
+                renderItem={({ item }) => (
+                  <View style={styles.replyItem}>
+                    <Avatar uri={item.church_user?.profile_picture_url} name={item.church_user?.name} size={30} />
+                    <View style={styles.commentBody}>
+                      <View style={styles.commentNameRow}>
+                        <Text style={styles.commentUser} numberOfLines={1}>
+                          {item.church_user?.name}
+                        </Text>
+                        <Text style={styles.commentTime}>{formatTimeDifference(item.createdAt)}</Text>
+                        <TouchableOpacity
+                          style={styles.commentOptionsBtn}
+                          onPress={() => openCommentOptions(item)}
+                          hitSlop={OPTIONS_HIT_SLOP}
+                          accessibilityRole="button"
+                          accessibilityLabel="Reply options"
+                        >
+                          <Ionicons name="ellipsis-horizontal" size={18} color={colors.inkMuted} />
+                        </TouchableOpacity>
                       </View>
+                      <TextInput
+                        style={[styles.commentContent, styles.readOnlySelectableText]}
+                        value={stripHtml(item.content || '')}
+                        editable={false}
+                        multiline
+                        scrollEnabled={false}
+                      />
+                      <View style={styles.commentMetaRow}>{renderCommentReactions(item, true)}</View>
                     </View>
-                  );
-                }}
-                ListEmptyComponent={<Text style={styles.emptyComments}>No replies yet.</Text>}
+                  </View>
+                )}
+                ListEmptyComponent={<Text style={styles.emptyComments}>No replies yet. Be the first!</Text>}
               />
             ) : (
               <FlatList
@@ -974,29 +1078,30 @@ export const PostCard: React.FC<PostCardProps> = ({
                 keyboardShouldPersistTaps="always"
                 data={comments}
                 keyExtractor={(item) => item.id}
+                contentContainerStyle={styles.commentList}
                 onScrollToIndexFailed={() => {}}
                 renderItem={({ item }) => {
                   const commentText = stripHtml(item.content || '');
                   const highlighted = initialFocusCommentId === item.id;
-                  const isLiked = item.comment_likes?.some((l: any) => l.church_userId === userId);
-                  const isHearted = item.comment_hearts?.some((h: any) => h.church_userId === userId);
-                  const isPrayed = item.comment_praying?.some((p: any) => p.church_userId === userId);
+                  const replies = item._count?.replies || 0;
 
                   return (
                     <View style={[styles.commentItem, highlighted && styles.commentHighlighted]}>
-                      {item.church_user?.profile_picture_url ? (
-                        <Image source={{ uri: item.church_user.profile_picture_url }} style={styles.commentAvatar} />
-                      ) : (
-                        <View style={[styles.commentAvatar, styles.avatarFallback]}>
-                          <Text style={styles.avatarTextSmall}>{(item.church_user?.name || '?')[0].toUpperCase()}</Text>
-                        </View>
-                      )}
-                      <View style={{ flex: 1 }}>
+                      <Avatar uri={item.church_user?.profile_picture_url} name={item.church_user?.name} size={36} />
+                      <View style={styles.commentBody}>
                         <View style={styles.commentNameRow}>
-                          <Text style={styles.commentUser}>{item.church_user?.name}</Text>
+                          <Text style={styles.commentUser} numberOfLines={1}>
+                            {item.church_user?.name}
+                          </Text>
                           <Text style={styles.commentTime}>{formatTimeDifference(item.createdAt)}</Text>
-                          <TouchableOpacity style={styles.commentOptionsBtn} onPress={() => openCommentOptions(item)}>
-                            <MaterialIcons name="more-vert" size={18} color="#555" />
+                          <TouchableOpacity
+                            style={styles.commentOptionsBtn}
+                            onPress={() => openCommentOptions(item)}
+                            hitSlop={OPTIONS_HIT_SLOP}
+                            accessibilityRole="button"
+                            accessibilityLabel="Comment options"
+                          >
+                            <Ionicons name="ellipsis-horizontal" size={18} color={colors.inkMuted} />
                           </TouchableOpacity>
                         </View>
                         <TextInput
@@ -1008,32 +1113,19 @@ export const PostCard: React.FC<PostCardProps> = ({
                         />
 
                         <View style={styles.commentMetaRow}>
-                          <View style={styles.commentReactions}>
-                            <View style={styles.reactionItem}>
-                              <TouchableOpacity onPress={() => handleCommentLike(item.id)}>
-                                <MaterialIcons name={isLiked ? 'thumb-up' : 'thumb-up-off-alt'} size={16} color="#3b82f6" />
-                              </TouchableOpacity>
-                              {item.comment_likes?.length > 0 ? <Text style={styles.reactionCount}>{item.comment_likes.length}</Text> : null}
-                            </View>
-                            <View style={styles.reactionItem}>
-                              <TouchableOpacity onPress={() => handleCommentHeart(item.id)}>
-                                <MaterialIcons name={isHearted ? 'favorite' : 'favorite-border'} size={16} color="#ef4444" />
-                              </TouchableOpacity>
-                              {item.comment_hearts?.length > 0 ? <Text style={styles.reactionCount}>{item.comment_hearts.length}</Text> : null}
-                            </View>
-                            <View style={styles.reactionItem}>
-                              <TouchableOpacity onPress={() => handleCommentPray(item.id)}>
-                                <Image source={isPrayed ? prayingHandFilled : prayingHandOutline} style={{ width: 16, height: 16 }} />
-                              </TouchableOpacity>
-                              {item.comment_praying?.length > 0 ? <Text style={styles.reactionCount}>{item.comment_praying.length}</Text> : null}
-                            </View>
-                          </View>
-
-                          <TouchableOpacity style={styles.replyAction} onPress={() => openReplyThread(item)}>
-                            <Text style={styles.replyActionText}>Reply</Text>
-                            {item._count?.replies > 0 && (
-                              <Text style={styles.replyCountNumber}>{item._count.replies}</Text>
-                            )}
+                          {renderCommentReactions(item, false)}
+                          <TouchableOpacity
+                            style={styles.replyAction}
+                            onPress={() => openReplyThread(item)}
+                            hitSlop={REACTION_HIT_SLOP}
+                            accessibilityRole="button"
+                            accessibilityLabel={
+                              replies > 0 ? `${formatCountLabel(replies, 'reply', 'replies')}, open replies` : 'Reply'
+                            }
+                          >
+                            <Text style={styles.replyActionText}>
+                              {replies > 0 ? formatCountLabel(replies, 'reply', 'replies') : 'Reply'}
+                            </Text>
                           </TouchableOpacity>
                         </View>
                       </View>
@@ -1041,7 +1133,11 @@ export const PostCard: React.FC<PostCardProps> = ({
                   );
                 }}
                 ListEmptyComponent={
-                  <Text style={styles.emptyComments}>{loadingComments ? 'Loading...' : 'No comments yet. Be the first!'}</Text>
+                  loadingComments ? (
+                    <ActivityIndicator style={styles.commentsLoading} color={colors.azure} />
+                  ) : (
+                    <Text style={styles.emptyComments}>No comments yet. Be the first!</Text>
+                  )
                 }
               />
             )}
@@ -1050,26 +1146,23 @@ export const PostCard: React.FC<PostCardProps> = ({
               <TextInput
                 style={styles.commentInput}
                 placeholder={showReplyThread ? 'Add a reply...' : 'Write a comment...'}
-                value={showReplyThread ? replyText : newComment}
+                placeholderTextColor={colors.inkFaint}
+                value={draft}
                 onChangeText={showReplyThread ? setReplyText : setNewComment}
                 multiline
               />
               <Pressable
                 onPress={handleSendPress}
-                disabled={isSubmittingComment || !(showReplyThread ? replyText : newComment).trim()}
+                disabled={!canSend}
                 hitSlop={{ top: 12, right: 12, bottom: 12, left: 12 }}
-                style={[styles.sendBtn, (isSubmittingComment || !(showReplyThread ? replyText : newComment).trim()) ? styles.sendBtnDisabled : null]}
+                style={[styles.sendBtn, canSend || isSubmittingComment ? null : styles.sendBtnDisabled]}
                 accessibilityRole="button"
-                accessibilityLabel="Send comment"
+                accessibilityLabel={showReplyThread ? 'Send reply' : 'Send comment'}
               >
                 {isSubmittingComment ? (
-                  <ActivityIndicator size="small" color="#3b82f6" />
+                  <ActivityIndicator size="small" color={colors.white} />
                 ) : (
-                  <MaterialIcons
-                    name="send"
-                    size={24}
-                    color={!(showReplyThread ? replyText : newComment).trim() ? '#bfd3f7' : '#3b82f6'}
-                  />
+                  <Ionicons name="arrow-up" size={20} color={canSend ? colors.white : colors.inkFaint} />
                 )}
               </Pressable>
             </View>
@@ -1086,18 +1179,18 @@ export const PostCard: React.FC<PostCardProps> = ({
                     textAlignVertical="top"
                   />
                   <View style={styles.editActions}>
-                    <TouchableOpacity
+                    <Button
+                      label="Cancel"
+                      kind="quiet"
+                      size="small"
+                      style={styles.editButton}
                       onPress={() => {
                         setShowEditCommentModal(false);
                         setEditingCommentId(null);
                         setEditCommentContent('');
                       }}
-                    >
-                      <Text style={styles.editCancel}>Cancel</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity onPress={submitEditComment}>
-                      <Text style={styles.editSave}>Save</Text>
-                    </TouchableOpacity>
+                    />
+                    <Button label="Save" size="small" style={styles.editButton} onPress={submitEditComment} />
                   </View>
                 </View>
               </View>
@@ -1106,7 +1199,7 @@ export const PostCard: React.FC<PostCardProps> = ({
         </View>
       </Modal>
 
-      <Modal visible={showEditModal} transparent animationType="fade">
+      <Modal visible={showEditModal} transparent animationType="fade" onRequestClose={() => setShowEditModal(false)}>
         <View style={styles.editOverlay}>
           <View style={styles.editCard}>
             <Text style={styles.editTitle}>Edit Post</Text>
@@ -1118,12 +1211,14 @@ export const PostCard: React.FC<PostCardProps> = ({
               textAlignVertical="top"
             />
             <View style={styles.editActions}>
-              <TouchableOpacity onPress={() => setShowEditModal(false)}>
-                <Text style={styles.editCancel}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={submitEditPost}>
-                <Text style={styles.editSave}>Save</Text>
-              </TouchableOpacity>
+              <Button
+                label="Cancel"
+                kind="quiet"
+                size="small"
+                style={styles.editButton}
+                onPress={() => setShowEditModal(false)}
+              />
+              <Button label="Save" size="small" style={styles.editButton} onPress={submitEditPost} />
             </View>
           </View>
         </View>
@@ -1131,11 +1226,16 @@ export const PostCard: React.FC<PostCardProps> = ({
 
       <Modal visible={viewerVisible} animationType="fade" onRequestClose={() => setViewerVisible(false)}>
         <View style={styles.viewerContainer}>
-          <View style={styles.viewerHeader}>
-            <Text style={styles.viewerCount}>{viewerIndex + 1} / {imageMedia.length}</Text>
-            <TouchableOpacity onPress={() => setViewerVisible(false)}>
-              <MaterialIcons name="close" size={28} color="#fff" />
-            </TouchableOpacity>
+          <View style={[styles.viewerHeader, { top: insets.top + 6 }]}>
+            <Text style={styles.viewerCount}>
+              {viewerIndex + 1} / {imageMedia.length}
+            </Text>
+            <CircleButton
+              icon="close"
+              kind="dark"
+              onPress={() => setViewerVisible(false)}
+              accessibilityLabel="Close photo"
+            />
           </View>
           <FlatList
             ref={fullscreenRef}
@@ -1157,147 +1257,192 @@ export const PostCard: React.FC<PostCardProps> = ({
           />
         </View>
       </Modal>
-
     </View>
   );
 };
 
+const REACTION_HIT_SLOP = { top: 10, bottom: 10, left: 6, right: 6 };
+const OPTIONS_HIT_SLOP = { top: 12, bottom: 12, left: 12, right: 12 };
+
 const styles = StyleSheet.create({
-  card: { backgroundColor: '#fff', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#e5e5e5' },
-  header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, marginBottom: 8 },
-  avatar: { width: 40, height: 40, borderRadius: 20, marginRight: 10 },
-  avatarFallback: { backgroundColor: '#3b82f6', justifyContent: 'center', alignItems: 'center' },
-  avatarText: { color: '#fff', fontWeight: 'bold', fontSize: 18 },
-  avatarTextSmall: { color: '#fff', fontWeight: 'bold', fontSize: 14 },
-  headerText: { flex: 1 },
-  userName: { fontWeight: '600', fontSize: 15 },
-  metaLine: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  metaSeparator: { color: '#666', fontSize: 12 },
-  groupBadge: { color: '#1d4ed8', fontSize: 12, fontWeight: '600', maxWidth: 130 },
-  timeAgo: { color: '#666', fontSize: 12 },
-  content: { fontSize: 15, lineHeight: 21, paddingHorizontal: 12, marginBottom: 8 },
-  readMore: { color: '#3b82f6', fontSize: 13, paddingHorizontal: 12, marginBottom: 8 },
+  /* The post card. It brings its own side margins, so a list of cards only needs the grey page behind it. */
+  card: {
+    marginHorizontal: GUTTER,
+    marginBottom: CARD_GAP,
+    backgroundColor: colors.card,
+    borderRadius: radius.xl,
+    overflow: 'hidden',
+  },
+  header: { flexDirection: 'row', alignItems: 'center', paddingLeft: 16, paddingRight: 4, paddingTop: 12, paddingBottom: 8, gap: 10 },
+  headerText: { flex: 1, minWidth: 0 },
+  userName: { fontSize: 16, fontWeight: '600', letterSpacing: -0.2, color: colors.ink },
+  metaLine: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 1 },
+  metaSeparator: { color: colors.inkMuted, fontSize: 13 },
+  groupBadgeBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, maxWidth: 170, minHeight: 20 },
+  groupBadge: { color: colors.azureText, fontSize: 13, fontWeight: '600', flexShrink: 1 },
+  timeAgo: { color: colors.inkMuted, fontSize: 13 },
+  optionsBtn: { width: TAP, height: TAP, alignItems: 'center', justifyContent: 'center' },
+  content: { fontSize: 16, lineHeight: 23, color: colors.ink, paddingHorizontal: 16, paddingTop: 0, marginBottom: 10 },
+  readMoreBtn: { paddingHorizontal: 16, marginTop: -6, marginBottom: 10, minHeight: 28, justifyContent: 'center' },
+  readMore: { color: colors.azureText, fontSize: 15, fontWeight: '500' },
   linkPreviewCard: {
-    marginHorizontal: 12,
-    marginBottom: 8,
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
-    borderRadius: 10,
-    backgroundColor: '#ffffff',
-    padding: 10,
+    marginHorizontal: 16,
+    marginBottom: 12,
+    borderRadius: radius.md,
+    backgroundColor: colors.page,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
   },
   linkPreviewTextWrap: { flex: 1 },
-  linkPreviewLabel: { fontSize: 12, color: '#2563eb', fontWeight: '700' },
-  linkPreviewTitle: { fontSize: 13, color: '#1f2937', marginTop: 2, fontWeight: '600' },
-  linkPreviewDescription: { fontSize: 12, color: '#4b5563', marginTop: 2 },
-  linkPreviewHint: { fontSize: 12, color: '#6b7280', marginTop: 2 },
-  galleryWrap: { marginBottom: 8 },
-  postImage: { width: SCREEN_WIDTH, backgroundColor: '#000' },
-  postVideoWrap: { width: SCREEN_WIDTH, backgroundColor: '#000' },
-  postVideo: { width: SCREEN_WIDTH, aspectRatio: 16 / 9, backgroundColor: '#000' },
+  linkPreviewLabel: { fontSize: 12, color: colors.azureText, fontWeight: '600' },
+  linkPreviewTitle: { fontSize: 15, color: colors.ink, marginTop: 2, fontWeight: '600' },
+  linkPreviewDescription: { fontSize: 13, color: colors.inkMuted, marginTop: 2 },
+  linkPreviewHint: { fontSize: 13, color: colors.inkMuted, marginTop: 2 },
+  galleryWrap: { marginBottom: 2 },
+  postImage: { width: MEDIA_WIDTH, backgroundColor: colors.fillSoft },
+  postVideoWrap: { width: MEDIA_WIDTH, backgroundColor: colors.black },
+  postVideo: { width: MEDIA_WIDTH, aspectRatio: 16 / 9, backgroundColor: colors.black },
   galleryDots: {
     position: 'absolute',
     bottom: 10,
     width: '100%',
     flexDirection: 'row',
     justifyContent: 'center',
+    alignItems: 'center',
     gap: 6,
   },
-  dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.55)' },
-  dotActive: { backgroundColor: '#fff', width: 8, height: 8, borderRadius: 4 },
-  countsRow: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 12, marginBottom: 4 },
-  countsLeft: { flexDirection: 'row', gap: 12 },
-  countText: { color: '#666', fontSize: 13 },
-  actions: { flexDirection: 'row', paddingHorizontal: 12, paddingTop: 8, borderTopWidth: 1, borderTopColor: '#eee', alignItems: 'center' },
-  actionBtn: { flexDirection: 'row', alignItems: 'center', marginRight: 20 },
-  prayIcon: { width: 24, height: 24 },
-  commentLabel: { color: '#3b82f6', marginLeft: 4, fontWeight: '500' },
-  commentModal: { flex: 1, backgroundColor: '#fff', paddingTop: 50 },
-  commentHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: '#eee' },
-  commentTitle: { fontSize: 18, fontWeight: 'bold' },
-  commentItem: { flexDirection: 'row', padding: 12, borderBottomWidth: 1, borderBottomColor: '#f0f0f0', alignItems: 'flex-start' },
-  commentHighlighted: { backgroundColor: '#eef5ff' },
-  commentAvatar: { width: 36, height: 36, borderRadius: 18, marginRight: 10 },
-  commentNameRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  commentOptionsBtn: { marginLeft: 'auto', padding: 2 },
-  commentUser: { fontWeight: '600', fontSize: 14 },
-  commentTime: { fontSize: 12, color: '#999' },
-  commentContent: { fontSize: 14, lineHeight: 20, marginTop: 4, color: '#333' },
-  commentMetaRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 6, paddingRight: 8 },
-  commentReactions: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  reactionItem: { flexDirection: 'row', alignItems: 'center', gap: 3 },
-  reactionCount: { color: '#6b7280', fontSize: 11, fontWeight: '600' },
-  replyAction: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  replyActionText: { color: '#666', fontSize: 13, fontWeight: '600' },
-  replyCountNumber: { color: '#666', fontSize: 13 },
-  replyParentContainer: { backgroundColor: '#eef2f7', borderBottomWidth: 1, borderBottomColor: '#dee2e6' },
-  replyItemNested: { flexDirection: 'row', padding: 12, paddingLeft: 24, borderBottomWidth: 1, borderBottomColor: '#f0f0f0', alignItems: 'flex-start' },
-  backButton: { padding: 4 },
+  dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.6)' },
+  dotActive: { backgroundColor: colors.white, width: 8, height: 8, borderRadius: 4 },
 
-  replyCount: { fontSize: 12, color: '#3b82f6', marginTop: 4 },
-  replyItem: {
+  actions: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 6, paddingVertical: 2 },
+  actionBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: TAP, minWidth: TAP, paddingHorizontal: 10, justifyContent: 'center' },
+  actionsSpacer: { flex: 1 },
+  actionCount: { fontSize: 14, fontWeight: '600', color: colors.inkSoft },
+  actionCountOn: { color: colors.ink },
+  /* The artwork has empty space around the hands, so it is drawn larger and pulled back in. */
+  prayIcon: { width: 31, height: 31, margin: -4 },
+  prayIconSmall: { width: 25, height: 25, margin: -3 },
+
+  /* Comments and replies */
+  sheetRoot: { flex: 1, backgroundColor: colors.card },
+  commentModal: { flex: 1, backgroundColor: colors.card },
+  commentHeader: {
     flexDirection: 'row',
-    marginTop: 10,
-    paddingTop: 8,
-    borderTopWidth: 1,
-    borderTopColor: '#eef2f7',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingBottom: 6,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.line,
   },
-  replyAvatar: { width: 28, height: 28, borderRadius: 14, marginRight: 8 },
-  emptyComments: { textAlign: 'center', padding: 40, color: '#999' },
+  headerSpacer: { width: TAP, height: TAP },
+  commentTitle: { flex: 1, textAlign: 'center', fontSize: 17, fontWeight: '600', letterSpacing: -0.2, color: colors.ink },
+  commentList: { paddingVertical: 6, flexGrow: 1 },
+  commentItem: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, paddingHorizontal: 16, paddingVertical: 10 },
+  commentHighlighted: { backgroundColor: colors.azureTint },
+  commentBody: { flex: 1, minWidth: 0 },
+  commentNameRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  commentOptionsBtn: { marginLeft: 'auto', paddingHorizontal: 2, paddingVertical: 2 },
+  commentUser: { fontSize: 15, fontWeight: '600', color: colors.ink, flexShrink: 1 },
+  commentTime: { fontSize: 13, color: colors.inkMuted },
+  commentContent: { fontSize: 16, lineHeight: 22, marginTop: 2, paddingTop: 0, color: colors.ink },
+  commentMetaRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 8, minHeight: 24 },
+  commentReactions: { flexDirection: 'row', alignItems: 'center', gap: 18 },
+  reactionItem: { flexDirection: 'row', alignItems: 'center', gap: 4, minWidth: 24, minHeight: 24 },
+  reactionCount: { color: colors.inkMuted, fontSize: 13, fontWeight: '600' },
+  replyAction: { minHeight: 24, justifyContent: 'center' },
+  replyActionText: { color: colors.azureText, fontSize: 14, fontWeight: '600' },
+  replyParent: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    marginHorizontal: 12,
+    marginTop: 6,
+    marginBottom: 6,
+    padding: 12,
+    borderRadius: radius.lg,
+    backgroundColor: colors.page,
+  },
+  replyItem: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, paddingLeft: 40, paddingRight: 16, paddingVertical: 10 },
+  emptyComments: { textAlign: 'center', paddingHorizontal: 32, paddingVertical: 44, color: colors.inkMuted, fontSize: 15 },
+  commentsLoading: { paddingVertical: 44 },
   commentInputRow: {
     flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: 8,
     paddingHorizontal: 12,
     paddingTop: 10,
     paddingBottom: Platform.OS === 'ios' ? 36 : 24,
-    borderTopWidth: 1,
-    borderTopColor: '#eee',
-    alignItems: 'flex-end',
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.line,
+    backgroundColor: colors.card,
   },
-  replyingBanner: {
-    width: '100%',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
+  commentInput: {
+    flex: 1,
+    minHeight: 40,
+    maxHeight: 110,
+    borderRadius: 20,
+    backgroundColor: colors.fillSoft,
+    paddingHorizontal: 16,
+    paddingTop: Platform.OS === 'ios' ? 10 : 8,
+    paddingBottom: Platform.OS === 'ios' ? 10 : 8,
+    fontSize: 16,
+    color: colors.ink,
   },
-  replyingText: { color: '#666', fontSize: 12 },
-  replyingCancel: { color: '#ef4444', fontSize: 12, fontWeight: '600' },
-  commentInput: { flex: 1, borderWidth: 1, borderColor: '#ddd', borderRadius: 20, paddingHorizontal: 16, paddingVertical: 10, fontSize: 15, maxHeight: 100 },
   readOnlySelectableText: {
     includeFontPadding: false,
     backgroundColor: 'transparent',
   },
-  sendBtn: { marginLeft: 8, width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
-  sendBtnDisabled: { opacity: 0.45 },
-  editOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'center', padding: 20 },
+  sendBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.azure,
+  },
+  sendBtnDisabled: { backgroundColor: colors.fill },
+
+  /* Edit a post, a comment or a reply */
+  editOverlay: { flex: 1, backgroundColor: colors.scrim, justifyContent: 'center', padding: 20 },
   inlineEditOverlay: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(0,0,0,0.35)',
+    backgroundColor: colors.scrim,
     justifyContent: 'center',
     padding: 20,
   },
-  editCard: { backgroundColor: '#fff', borderRadius: 12, padding: 14 },
-  editTitle: { fontSize: 17, fontWeight: '700', marginBottom: 10, color: '#222' },
-  editInput: { minHeight: 120, borderWidth: 1, borderColor: '#ddd', borderRadius: 8, padding: 10, fontSize: 15, color: '#222' },
-  editActions: { marginTop: 12, flexDirection: 'row', justifyContent: 'flex-end', gap: 18 },
-  editCancel: { color: '#666', fontSize: 15 },
-  editSave: { color: '#007AFF', fontSize: 15, fontWeight: '700' },
-  viewerContainer: { flex: 1, backgroundColor: '#000' },
+  editCard: { backgroundColor: colors.card, borderRadius: radius.xl, padding: 16 },
+  editTitle: { fontSize: 17, fontWeight: '600', letterSpacing: -0.2, marginBottom: 12, color: colors.ink },
+  editInput: {
+    minHeight: 120,
+    borderRadius: radius.md,
+    backgroundColor: colors.fillSoft,
+    padding: 12,
+    fontSize: 16,
+    lineHeight: 22,
+    color: colors.ink,
+  },
+  editActions: { marginTop: 14, flexDirection: 'row', justifyContent: 'flex-end', gap: 10 },
+  editButton: { minHeight: 40, borderRadius: 20, paddingHorizontal: 20 },
+
+  /* Full-screen photos */
+  viewerContainer: { flex: 1, backgroundColor: colors.black },
   viewerHeader: {
     position: 'absolute',
-    top: 50,
-    left: 16,
-    right: 16,
+    left: 12,
+    right: 8,
     zIndex: 2,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  viewerCount: { color: '#fff', fontSize: 14, fontWeight: '600' },
+  viewerCount: { color: colors.white, fontSize: 15, fontWeight: '600', marginLeft: 6 },
   viewerPage: { width: SCREEN_WIDTH, justifyContent: 'center', alignItems: 'center' },
   viewerImage: { width: SCREEN_WIDTH, height: '100%' },
 });

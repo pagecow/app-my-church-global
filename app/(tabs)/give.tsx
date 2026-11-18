@@ -1,8 +1,10 @@
 import React from 'react';
-import { StyleSheet, View, Text, TouchableOpacity, Linking, ScrollView } from 'react-native';
+import { StyleSheet, View, Text, Linking, ScrollView } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../context/AuthContext';
-import { MaterialIcons } from '@expo/vector-icons';
 import Navbar from '../../components/Navbar';
+import { Button } from '../../components/ui';
+import { colors, GUTTER, radius, shapes, text } from '../../lib/theme';
 
 export default function GiveScreen() {
   const { appData } = useAuth();
@@ -17,40 +19,67 @@ export default function GiveScreen() {
   };
 
   return (
-    <View style={styles.container}>
-      <Navbar />
+    <View style={shapes.page}>
+      <Navbar title="Give" />
       <ScrollView contentContainerStyle={styles.content}>
-        <View style={styles.quoteBox}>
-          <Text style={styles.quoteText}>{donationQuote}</Text>
+        <View style={styles.card}>
+          <View style={styles.heart}>
+            <Ionicons name="heart" size={32} color={colors.azure} />
+          </View>
+
+          <Text style={styles.message}>{donationQuote}</Text>
+
+          {appData?.payment_link ? (
+            <>
+              <Button
+                label="Give"
+                iconRight="open-outline"
+                onPress={openPaymentLink}
+                accessibilityRole="link"
+                style={styles.giveButton}
+              />
+              <Text style={[styles.note, styles.noteUnderButton]}>
+                Opens our church's giving page in your browser.
+              </Text>
+            </>
+          ) : (
+            <Text style={styles.note}>Giving is not yet set up for this church.</Text>
+          )}
         </View>
-
-        <Text style={styles.startGiving}>Start giving today!</Text>
-
-        {appData?.payment_link ? (
-          <>
-            <TouchableOpacity style={styles.giveButton} onPress={openPaymentLink}>
-              <Text style={styles.giveButtonText}>GIVE</Text>
-              <MaterialIcons name="arrow-forward" size={24} color="#333" />
-            </TouchableOpacity>
-            <Text style={styles.note}>
-              (To give, you will be taken outside of this app to our church donation web page.)
-            </Text>
-          </>
-        ) : (
-          <Text style={styles.note}>Giving is not yet set up for this church.</Text>
-        )}
       </ScrollView>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#fff' },
-  content: { padding: 20, alignItems: 'center' },
-  quoteBox: { backgroundColor: '#007AFF', borderRadius: 8, padding: 24, marginTop: 20, marginBottom: 30, width: '100%' },
-  quoteText: { color: '#fff', fontSize: 16, lineHeight: 24, textAlign: 'center' },
-  startGiving: { fontSize: 18, marginBottom: 20, color: '#333' },
-  giveButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#fff', borderWidth: 2, borderColor: '#007AFF', borderRadius: 30, paddingVertical: 16, paddingHorizontal: 40, width: '100%', gap: 10 },
-  giveButtonText: { fontSize: 18, fontWeight: 'bold', color: '#333', textTransform: 'uppercase' },
-  note: { fontSize: 13, color: '#666', textAlign: 'center', marginTop: 16 },
+  content: { paddingHorizontal: GUTTER, paddingTop: 6, paddingBottom: 24 },
+  card: {
+    alignItems: 'center',
+    gap: 18,
+    paddingTop: 36,
+    paddingHorizontal: 24,
+    paddingBottom: 28,
+    backgroundColor: colors.card,
+    borderRadius: radius.xxl,
+  },
+  heart: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: colors.azureTint,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  message: {
+    ...text.bodyLarge,
+    fontSize: 19,
+    lineHeight: 27,
+    fontWeight: '500',
+    letterSpacing: -0.2,
+    textAlign: 'center',
+  },
+  giveButton: { alignSelf: 'stretch' },
+  note: { ...text.footnote, textAlign: 'center' },
+  /* Pulled up a little so the note reads as part of the button above it. */
+  noteUnderButton: { marginTop: -6 },
 });

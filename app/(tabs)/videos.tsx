@@ -19,11 +19,14 @@ import {
 } from 'react-native';
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { MaterialIcons } from '@expo/vector-icons';
+import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { VideoView, useVideoPlayer } from 'expo-video';
 import * as ImagePicker from 'expo-image-picker';
 import Navbar from '../../components/Navbar';
+import { Button, EmptyState, GroupLabel, Loading, SheetHeader } from '../../components/ui';
 import { useAuth } from '../../context/AuthContext';
+import { CARD_GAP, colors, GUTTER, radius, shapes, TAP, text } from '../../lib/theme';
 
 const DIRECT_MEDIA_REGEX = /\.(mp4|m4v|mov|webm|m3u8|mp3|m4a|aac|wav|ogg)(\?.*)?$/i;
 const isDirectMediaUrl = (url: string) => DIRECT_MEDIA_REGEX.test(url.trim());
@@ -118,6 +121,17 @@ const DEFAULT_THUMBNAIL = 'https://appmychurch.com/appuser/content.jpg';
 const PAGE_SIZE = 10;
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/** "Nov 15", with the year added once it is no longer this year. Empty when the date cannot be read. */
+const formatAddedDate = (value?: string | null) => {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  const label = `${MONTHS[date.getMonth()]} ${date.getDate()}`;
+  return date.getFullYear() === new Date().getFullYear() ? label : `${label}, ${date.getFullYear()}`;
+};
+
 type VideoItem = {
   id: string;
   title: string;
@@ -169,6 +183,7 @@ function ManagedVideoPlayer({
 
 export default function VideosScreen() {
   const { token, user } = useAuth();
+  const insets = useSafeAreaInsets();
   const [videos, setVideos] = useState<VideoItem[]>([]);
   const [playlists, setPlaylists] = useState<Playlist[]>([]);
   const [selectedPlaylistId, setSelectedPlaylistId] = useState<string>('');
@@ -177,7 +192,6 @@ export default function VideosScreen() {
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
-  const [showPlaylistPicker, setShowPlaylistPicker] = useState(false);
 
   const [activeVideo, setActiveVideo] = useState<VideoItem | null>(null);
 
@@ -267,12 +281,6 @@ export default function VideosScreen() {
   const onEndReached = () => {
     if (loading || isLoadingMore || !hasMore) return;
     fetchVideos(page + 1, false, selectedPlaylistId || undefined);
-  };
-
-  const getSelectedPlaylistName = () => {
-    if (!selectedPlaylistId) return 'All Videos';
-    const pl = playlists.find((p) => p.id === selectedPlaylistId);
-    return pl ? pl.name : 'All Videos';
   };
 
   const isAudio = (item: VideoItem) => item.mediaType?.startsWith('audio/');
@@ -475,22 +483,16 @@ export default function VideosScreen() {
 
   const renderVideoCard = ({ item }: { item: VideoItem }) => {
     const thumbnail = item.imageUrl && item.imageUrl !== 'null' ? item.imageUrl : DEFAULT_THUMBNAIL;
+    const canOpen = Boolean(item.mediaUrl || item.shareLink);
+    const opensElsewhere = Boolean(item.shareLink || (item.mediaUrl && !isDirectMediaUrl(item.mediaUrl)));
+    const overlayIcon = opensElsewhere ? 'open-outline' : isAudio(item) ? 'musical-notes' : 'play';
+    const playlistName = item.playlistId ? playlists.find((p) => p.id === item.playlistId)?.name : '';
+    const details = [item.author?.trim(), playlistName, formatAddedDate(item.createdAt)]
+      .filter(Boolean)
+      .join(' · ');
 
     return (
-      <View style={styles.videoCard}>
-        {user?.is_admin && (
-          <TouchableOpacity
-            style={styles.videoOptionsBtn}
-            onPress={() => {
-              Alert.alert('Video Options', 'Choose an action', [
-                { text: 'Edit Video', onPress: () => openEditVideo(item) },
-                { text: 'Cancel', style: 'cancel' },
-              ]);
-            }}
-          >
-            <MaterialIcons name="more-vert" size={22} color="#374151" />
-          </TouchableOpacity>
-        )}
+      <View style={shapes.card}>
         <TouchableOpacity
           onPress={async () => {
             if (item.mediaUrl) {
@@ -516,29 +518,51 @@ export default function VideosScreen() {
             }
           }}
           activeOpacity={item.mediaUrl || item.shareLink ? 0.7 : 1}
+          accessibilityRole={canOpen ? 'button' : undefined}
+          accessibilityLabel={canOpen ? `Play ${item.title}` : item.title}
         >
           <Image source={{ uri: thumbnail }} style={styles.thumbnail} />
           {(item.mediaUrl || item.shareLink) && (
-            <View style={styles.playOverlay}>
-              <MaterialIcons
-                name={(item.shareLink || (item.mediaUrl && !isDirectMediaUrl(item.mediaUrl)))
-                  ? 'open-in-new'
-                  : isAudio(item)
-                    ? 'audiotrack'
-                    : 'play-circle-filled'}
-                size={48}
-                color="rgba(255,255,255,0.9)"
-              />
+            <View style={[StyleSheet.absoluteFill, styles.playOverlay]}>
+              <View style={styles.playButton}>
+                <Ionicons
+                  name={overlayIcon}
+                  size={24}
+                  color={colors.ink}
+                  style={overlayIcon === 'play' ? styles.playIcon : null}
+                />
+              </View>
             </View>
           )}
         </TouchableOpacity>
-        <View style={styles.videoInfo}>
-          <Text style={styles.videoTitle} numberOfLines={2}>{item.title}</Text>
-          {item.content ? (
-            <Text style={styles.videoDescription} numberOfLines={2}>
-              {item.content.replace(/<[^>]*>/g, '')}
-            </Text>
-          ) : null}
+        <View style={[styles.videoInfo, user?.is_admin ? styles.videoInfoWithOptions : null]}>
+          <View style={styles.videoText}>
+            <Text style={text.headline} numberOfLines={2}>{item.title}</Text>
+            {details ? (
+              <Text style={text.secondary} numberOfLines={1}>{details}</Text>
+            ) : null}
+            {/* A video that opens in the browser has no player screen, so this is the only place its description shows. */}
+            {item.content ? (
+              <Text style={[text.secondary, { color: colors.inkSoft, marginTop: 2 }]} numberOfLines={2}>
+                {item.content.replace(/<[^>]*>/g, '')}
+              </Text>
+            ) : null}
+          </View>
+          {user?.is_admin && (
+            <TouchableOpacity
+              style={styles.videoOptionsBtn}
+              onPress={() => {
+                Alert.alert('Video Options', 'Choose an action', [
+                  { text: 'Edit Video', onPress: () => openEditVideo(item) },
+                  { text: 'Cancel', style: 'cancel' },
+                ]);
+              }}
+              accessibilityRole="button"
+              accessibilityLabel="Video options"
+            >
+              <Ionicons name="ellipsis-horizontal" size={22} color={colors.inkMuted} />
+            </TouchableOpacity>
+          )}
         </View>
       </View>
     );
@@ -548,7 +572,7 @@ export default function VideosScreen() {
     <>
       {isLoadingMore && (
         <View style={styles.footerLoader}>
-          <ActivityIndicator size="small" color="#007AFF" />
+          <ActivityIndicator size="small" color={colors.azure} />
           <Text style={styles.footerText}>Loading more videos...</Text>
         </View>
       )}
@@ -561,99 +585,68 @@ export default function VideosScreen() {
   );
 
   return (
-    <View style={styles.container}>
-      <Navbar />
-      <View style={styles.headerRow}>
-        <View style={styles.headerLeft}>
-          <Text style={styles.headerTitle}>Videos</Text>
-          {user?.is_admin && (
-            <TouchableOpacity
-              style={styles.addBtn}
-              onPress={() => setShowCreateModal(true)}
-            >
-              <MaterialIcons name="add" size={20} color="#fff" />
-            </TouchableOpacity>
-          )}
-        </View>
-        {playlists.length > 0 && (
-          <TouchableOpacity
-            style={styles.playlistSelector}
-            onPress={() => setShowPlaylistPicker(true)}
-          >
-            <Text style={styles.playlistSelectorText}>{getSelectedPlaylistName()}</Text>
-            <MaterialIcons name="arrow-drop-down" size={24} color="#374151" />
-          </TouchableOpacity>
-        )}
-      </View>
+    <View style={shapes.page}>
+      <Navbar
+        title="Videos"
+        onAdd={user?.is_admin ? () => setShowCreateModal(true) : undefined}
+        addLabel="Add video"
+      />
+
+      {playlists.length > 0 && (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.pillScroll}
+          contentContainerStyle={styles.pillRow}
+        >
+          <PlaylistPill label="All" selected={!selectedPlaylistId} onPress={() => setSelectedPlaylistId('')} />
+          {playlists.map((pl) => (
+            <PlaylistPill
+              key={pl.id}
+              label={pl.name}
+              selected={selectedPlaylistId === pl.id}
+              onPress={() => setSelectedPlaylistId(pl.id)}
+            />
+          ))}
+        </ScrollView>
+      )}
 
       {loading && !refreshing ? (
-        <View style={styles.loading}>
-          <ActivityIndicator size="large" color="#007AFF" />
-        </View>
+        <Loading />
       ) : (
         <FlatList
           data={videos}
           keyExtractor={(item) => item.id}
           renderItem={renderVideoCard}
           contentContainerStyle={styles.listContent}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.inkMuted} />}
           ListFooterComponent={ListFooter}
           onEndReached={onEndReached}
           onEndReachedThreshold={0.3}
           ListEmptyComponent={
-            <View style={styles.emptyContainer}>
-              <MaterialIcons name="videocam-off" size={48} color="#d1d5db" />
-              <Text style={styles.emptyText}>No Videos Added Yet</Text>
-            </View>
+            <EmptyState icon="videocam-outline" title="No videos yet" hint="New videos will show up here." />
           }
         />
       )}
 
-      {/* Playlist Picker Modal */}
-      <Modal visible={showPlaylistPicker} animationType="fade" transparent>
-        <TouchableOpacity
-          style={styles.pickerOverlay}
-          activeOpacity={1}
-          onPress={() => setShowPlaylistPicker(false)}
-        >
-          <View style={styles.pickerContainer} onStartShouldSetResponder={() => true}>
-            <Text style={styles.pickerTitle}>Select Playlist</Text>
-            <TouchableOpacity
-              style={[styles.pickerOption, !selectedPlaylistId && styles.pickerOptionActive]}
-              onPress={() => { setSelectedPlaylistId(''); setShowPlaylistPicker(false); }}
-            >
-              <Text style={[styles.pickerOptionText, !selectedPlaylistId && styles.pickerOptionTextActive]}>
-                All Videos
-              </Text>
-            </TouchableOpacity>
-            {playlists.map((pl) => (
-              <TouchableOpacity
-                key={pl.id}
-                style={[styles.pickerOption, selectedPlaylistId === pl.id && styles.pickerOptionActive]}
-                onPress={() => { setSelectedPlaylistId(pl.id); setShowPlaylistPicker(false); }}
-              >
-                <Text style={[styles.pickerOptionText, selectedPlaylistId === pl.id && styles.pickerOptionTextActive]}>
-                  {pl.name}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </TouchableOpacity>
-      </Modal>
-
       {/* Video Player Modal */}
-      <Modal visible={!!activeVideo} animationType="slide">
+      <Modal visible={!!activeVideo} animationType="slide" onRequestClose={() => setActiveVideo(null)}>
         <View style={styles.playerModal}>
-          <View style={styles.playerHeader}>
-            <TouchableOpacity onPress={() => { setActiveVideo(null); }}>
-              <MaterialIcons name="close" size={28} color="#fff" />
+          <View style={[styles.playerHeader, { paddingTop: insets.top + 4 }]}>
+            <TouchableOpacity
+              style={styles.playerClose}
+              onPress={() => { setActiveVideo(null); }}
+              accessibilityRole="button"
+              accessibilityLabel="Close"
+            >
+              <Ionicons name="close" size={28} color={colors.white} />
             </TouchableOpacity>
           </View>
 
           {activeVideo?.mediaUrl && (
             isAudio(activeVideo) ? (
               <View style={styles.audioContainer}>
-                <MaterialIcons name="audiotrack" size={80} color="#007AFF" />
+                <Ionicons name="musical-notes" size={80} color={colors.azure} />
                 <ManagedVideoPlayer uri={activeVideo.mediaUrl} style={styles.audioPlayer} shouldPlay />
               </View>
             ) : (
@@ -678,24 +671,30 @@ export default function VideosScreen() {
       </Modal>
 
       {/* Create Video Modal */}
-      <Modal visible={showCreateModal} animationType="slide">
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.createModal}>
-          <View style={styles.createHeader}>
-            <TouchableOpacity onPress={() => { setShowCreateModal(false); resetCreateForm(); }}>
-              <MaterialIcons name="close" size={28} color="#333" />
-            </TouchableOpacity>
-            <Text style={styles.createHeaderTitle}>{editingVideoId ? 'Edit Video' : 'Add Video'}</Text>
-            <View style={{ width: 28 }} />
-          </View>
+      <Modal
+        visible={showCreateModal}
+        animationType="slide"
+        onRequestClose={() => { setShowCreateModal(false); resetCreateForm(); }}
+      >
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={shapes.page}>
+          <SheetHeader
+            title={editingVideoId ? 'Edit Video' : 'Add Video'}
+            onCancel={() => { setShowCreateModal(false); resetCreateForm(); }}
+            actionLabel={editingVideoId ? 'Save' : 'Add'}
+            onAction={submitVideo}
+            actionLoading={isCreating}
+          />
 
           <ScrollView
             contentContainerStyle={styles.createBody}
             keyboardShouldPersistTaps="handled"
             keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
           >
+            <GroupLabel style={styles.formLabel}>Link</GroupLabel>
             <TextInput
-              style={styles.input}
+              style={[shapes.input, styles.field]}
               placeholder="Share Link / Link to Video *"
+              placeholderTextColor={colors.inkFaint}
               value={newMediaUrl}
               onChangeText={setNewMediaUrl}
               onBlur={prefillFromShareLink}
@@ -704,105 +703,119 @@ export default function VideosScreen() {
             />
             {isFetchingMetadata ? (
               <View style={styles.metaLoadingRow}>
-                <ActivityIndicator size="small" color="#007AFF" />
-                <Text style={styles.metaLoadingText}>Fetching link metadata...</Text>
+                <ActivityIndicator size="small" color={colors.azure} />
+                <Text style={text.footnote}>Fetching link metadata...</Text>
               </View>
             ) : null}
+
+            <GroupLabel style={styles.formLabel}>Details</GroupLabel>
             <TextInput
-              style={styles.input}
+              style={[shapes.input, styles.field]}
               placeholder="Title *"
+              placeholderTextColor={colors.inkFaint}
               value={newTitle}
               onChangeText={setNewTitle}
             />
             <TextInput
-              style={[styles.input, styles.multiline]}
+              style={[shapes.input, styles.field, styles.multiline]}
               placeholder="Description"
+              placeholderTextColor={colors.inkFaint}
               value={newDescription}
               onChangeText={setNewDescription}
               multiline
             />
             <TextInput
-              style={styles.input}
+              style={[shapes.input, styles.field]}
               placeholder="Author"
+              placeholderTextColor={colors.inkFaint}
               value={newAuthor}
               onChangeText={setNewAuthor}
             />
 
             {playlists.length > 0 && (
               <TouchableOpacity
-                style={styles.formPickerField}
+                style={[styles.formPickerField, styles.field]}
                 onPress={() => setShowCreatePlaylistPicker(true)}
+                accessibilityRole="button"
+                accessibilityLabel={`Playlist, ${getCreatePlaylistName()}`}
               >
                 <Text style={styles.formPickerLabel}>Playlist</Text>
-                <Text style={styles.formPickerValue}>{getCreatePlaylistName()}</Text>
+                <Text style={styles.formPickerValue} numberOfLines={1}>{getCreatePlaylistName()}</Text>
+                <Ionicons name="chevron-forward" size={18} color={colors.inkFaint} />
               </TouchableOpacity>
             )}
 
-            <TouchableOpacity style={styles.imageAttachBtn} onPress={pickThumbnail}>
-              <MaterialIcons name="image" size={20} color="#007AFF" />
-              <Text style={styles.imageAttachText}>Attach Thumbnail</Text>
-            </TouchableOpacity>
+            <GroupLabel style={styles.formLabel}>Thumbnail</GroupLabel>
+            <Button kind="plain" icon="image-outline" label="Attach Thumbnail" onPress={pickThumbnail} />
 
             {thumbnailAsset && (
-              <View style={styles.previewCard}>
+              <View style={[shapes.card, styles.previewCard]}>
                 <Image source={{ uri: thumbnailAsset.uri }} style={styles.previewImage} />
-                <TouchableOpacity onPress={() => setThumbnailAsset(null)} style={styles.removeAttachmentBtn}>
+                <TouchableOpacity
+                  onPress={() => setThumbnailAsset(null)}
+                  style={styles.removeAttachmentBtn}
+                  accessibilityRole="button"
+                >
                   <Text style={styles.removeAttachmentText}>Remove Thumbnail</Text>
                 </TouchableOpacity>
               </View>
             )}
 
-            <TouchableOpacity style={styles.submitBtn} onPress={submitVideo} disabled={isCreating}>
-              {isCreating ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <Text style={styles.submitBtnText}>{editingVideoId ? 'Save Changes' : 'Add Video'}</Text>
-              )}
-            </TouchableOpacity>
-
+            {editingVideoId ? (
+              <Button
+                kind="danger"
+                label="Delete Video"
+                onPress={confirmDeleteVideo}
+                loading={isDeleting}
+                style={styles.deleteBtn}
+              />
+            ) : null}
           </ScrollView>
-
-          {editingVideoId ? (
-            <View style={styles.deleteFooter}>
-              <TouchableOpacity style={styles.deleteBtn} onPress={confirmDeleteVideo} disabled={isDeleting}>
-                {isDeleting ? (
-                  <ActivityIndicator color="#ef4444" />
-                ) : (
-                  <Text style={styles.deleteBtnText}>Delete Video</Text>
-                )}
-              </TouchableOpacity>
-            </View>
-          ) : null}
         </KeyboardAvoidingView>
 
         {/* Playlist picker inside create modal */}
-        <Modal visible={showCreatePlaylistPicker} animationType="fade" transparent>
+        <Modal
+          visible={showCreatePlaylistPicker}
+          animationType="fade"
+          transparent
+          onRequestClose={() => setShowCreatePlaylistPicker(false)}
+        >
           <TouchableOpacity
             style={styles.pickerOverlay}
             activeOpacity={1}
             onPress={() => setShowCreatePlaylistPicker(false)}
           >
             <View style={styles.pickerContainer} onStartShouldSetResponder={() => true}>
-              <Text style={styles.pickerTitle}>Select Playlist</Text>
-              <TouchableOpacity
-                style={[styles.pickerOption, !newPlaylistId && styles.pickerOptionActive]}
-                onPress={() => { setNewPlaylistId(''); setShowCreatePlaylistPicker(false); }}
-              >
-                <Text style={[styles.pickerOptionText, !newPlaylistId && styles.pickerOptionTextActive]}>
-                  None
-                </Text>
-              </TouchableOpacity>
-              {playlists.map((pl) => (
+              <Text style={[text.headline, styles.pickerTitle]}>Select Playlist</Text>
+              <ScrollView>
                 <TouchableOpacity
-                  key={pl.id}
-                  style={[styles.pickerOption, newPlaylistId === pl.id && styles.pickerOptionActive]}
-                  onPress={() => { setNewPlaylistId(pl.id); setShowCreatePlaylistPicker(false); }}
+                  style={styles.pickerOption}
+                  onPress={() => { setNewPlaylistId(''); setShowCreatePlaylistPicker(false); }}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: !newPlaylistId }}
                 >
-                  <Text style={[styles.pickerOptionText, newPlaylistId === pl.id && styles.pickerOptionTextActive]}>
-                    {pl.name}
+                  <Text style={[styles.pickerOptionText, !newPlaylistId && styles.pickerOptionTextActive]}>
+                    None
                   </Text>
+                  {!newPlaylistId ? <Ionicons name="checkmark" size={20} color={colors.azure} /> : null}
                 </TouchableOpacity>
-              ))}
+                {playlists.map((pl) => (
+                  <React.Fragment key={pl.id}>
+                    <View style={[shapes.divider, styles.pickerDivider]} />
+                    <TouchableOpacity
+                      style={styles.pickerOption}
+                      onPress={() => { setNewPlaylistId(pl.id); setShowCreatePlaylistPicker(false); }}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: newPlaylistId === pl.id }}
+                    >
+                      <Text style={[styles.pickerOptionText, newPlaylistId === pl.id && styles.pickerOptionTextActive]}>
+                        {pl.name}
+                      </Text>
+                      {newPlaylistId === pl.id ? <Ionicons name="checkmark" size={20} color={colors.azure} /> : null}
+                    </TouchableOpacity>
+                  </React.Fragment>
+                ))}
+              </ScrollView>
             </View>
           </TouchableOpacity>
         </Modal>
@@ -811,144 +824,90 @@ export default function VideosScreen() {
   );
 }
 
+/** One choice in the row of playlists under the header. The pill is 34 high; the area that takes the tap is 44. */
+function PlaylistPill({
+  label,
+  selected,
+  onPress,
+}: {
+  label: string;
+  selected: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <TouchableOpacity
+      style={styles.pillHit}
+      onPress={onPress}
+      activeOpacity={0.7}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityState={{ selected }}
+    >
+      <View style={[styles.pill, selected ? styles.pillOn : null]}>
+        <Text style={[styles.pillText, selected ? styles.pillTextOn : null]} numberOfLines={1}>
+          {label}
+        </Text>
+      </View>
+    </TouchableOpacity>
+  );
+}
+
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#fff' },
-  loading: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  headerRow: {
+  pillScroll: { flexGrow: 0 },
+  pillRow: { paddingHorizontal: GUTTER, paddingTop: 2, gap: 8 },
+  pillHit: { height: TAP, justifyContent: 'center' },
+  pill: {
+    height: 34,
+    maxWidth: 260,
+    borderRadius: 17,
     paddingHorizontal: 16,
-    paddingTop: 14,
-    paddingBottom: 4,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  headerLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  headerTitle: { fontSize: 24, fontWeight: '700', color: '#222' },
-  addBtn: {
-    backgroundColor: '#007AFF',
-    width: 25,
-    height: 25,
-    borderRadius: 18,
-    alignItems: 'center',
     justifyContent: 'center',
+    backgroundColor: colors.card,
   },
-  listContent: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 16, gap: 12 },
-  videoCard: {
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
-    borderRadius: 10,
-    backgroundColor: '#fff',
-    overflow: 'hidden',
-  },
-  thumbnail: {
-    width: '100%',
-    height: SCREEN_WIDTH * 0.56,
-    backgroundColor: '#f3f4f6',
-  },
+  pillOn: { backgroundColor: colors.ink },
+  pillText: { ...text.buttonSmall, fontWeight: '500', color: colors.ink },
+  pillTextOn: { fontWeight: '600', color: colors.white },
+
+  listContent: { paddingHorizontal: GUTTER, paddingTop: 8, paddingBottom: 24, gap: CARD_GAP },
+  thumbnail: { width: '100%', aspectRatio: 16 / 9, backgroundColor: colors.fill },
   playOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    width: '100%',
-    height: SCREEN_WIDTH * 0.56,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: 'rgba(0,0,0,0.15)',
+    backgroundColor: 'rgba(0, 0, 0, 0.15)',
   },
-  videoOptionsBtn: {
-    position: 'absolute',
-    top: 8,
-    right: 8,
-    zIndex: 10,
-    backgroundColor: 'rgba(255,255,255,0.85)',
-    borderRadius: 14,
-    width: 28,
-    height: 28,
+  playButton: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: 'rgba(255, 255, 255, 0.92)',
     alignItems: 'center',
     justifyContent: 'center',
   },
+  /* The triangle looks off-centre in a circle unless it is nudged to the right. */
+  playIcon: { marginLeft: 3 },
   videoInfo: {
-    padding: 12,
-  },
-  videoTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#111827',
-  },
-  videoDescription: {
-    marginTop: 4,
-    fontSize: 14,
-    color: '#6b7280',
-    lineHeight: 20,
-  },
-  playlistSelector: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#f3f4f6',
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 10,
+    gap: 4,
+    paddingTop: 12,
+    paddingBottom: 14,
+    paddingLeft: 16,
+    paddingRight: 16,
   },
-  playlistSelectorText: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#374151',
-  },
-  emptyContainer: { padding: 60, alignItems: 'center', gap: 12 },
-  emptyText: { color: '#9ca3af', fontSize: 16, fontWeight: '600', textTransform: 'uppercase' },
+  videoInfoWithOptions: { paddingRight: 6 },
+  videoText: { flex: 1, minWidth: 0, gap: 3 },
+  videoOptionsBtn: { width: TAP, height: TAP, alignItems: 'center', justifyContent: 'center' },
   footerLoader: { padding: 16, alignItems: 'center' },
-  footerText: { color: '#999', fontSize: 13, marginTop: 4 },
-  pickerOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.4)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  pickerContainer: {
-    backgroundColor: '#fff',
-    borderRadius: 14,
-    padding: 20,
-    width: '80%',
-    maxHeight: '60%',
-  },
-  pickerTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#111827',
-    marginBottom: 16,
-  },
-  pickerOption: {
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    borderRadius: 8,
-    marginBottom: 4,
-  },
-  pickerOptionActive: {
-    backgroundColor: '#dbeafe',
-  },
-  pickerOptionText: {
-    fontSize: 15,
-    color: '#374151',
-  },
-  pickerOptionTextActive: {
-    color: '#1d4ed8',
-    fontWeight: '600',
-  },
-  playerModal: {
-    flex: 1,
-    backgroundColor: '#000',
-  },
+  footerText: { ...text.footnote, marginTop: 4 },
+
+  playerModal: { flex: 1, backgroundColor: colors.black },
   playerHeader: {
-    paddingTop: 55,
-    paddingHorizontal: 16,
-    paddingBottom: 10,
+    paddingHorizontal: 8,
+    paddingBottom: 6,
     flexDirection: 'row',
     justifyContent: 'flex-end',
   },
+  playerClose: { width: TAP, height: TAP, alignItems: 'center', justifyContent: 'center' },
   videoPlayerFull: {
     width: '100%',
     height: SCREEN_WIDTH * 0.56,
@@ -963,92 +922,58 @@ const styles = StyleSheet.create({
     width: '90%',
     height: 60,
   },
-  playerDetails: {
-    padding: 16,
-  },
-  playerTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#fff',
-  },
-  playerDescription: {
-    marginTop: 10,
-    fontSize: 15,
-    color: '#d1d5db',
-    lineHeight: 22,
-  },
-  createModal: { flex: 1, backgroundColor: '#fff' },
-  createHeader: {
-    paddingHorizontal: 16,
-    paddingTop: 60,
-    paddingBottom: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  createHeaderTitle: { fontSize: 18, fontWeight: '700', color: '#111827' },
-  createBody: { padding: 16, gap: 12, paddingBottom: Platform.OS === 'ios' ? 260 : 180, flexGrow: 1 },
-  input: {
-    borderWidth: 1,
-    borderColor: '#d1d5db',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    fontSize: 15,
-  },
-  multiline: { minHeight: 100, textAlignVertical: 'top' },
+  playerDetails: { padding: GUTTER },
+  playerTitle: { ...text.section, color: colors.white },
+  playerDescription: { ...text.body, marginTop: 10, color: colors.white, opacity: 0.75 },
+
+  createBody: { paddingHorizontal: GUTTER, paddingTop: 6, paddingBottom: 180, flexGrow: 1 },
+  formLabel: { marginTop: 10 },
+  field: { marginBottom: 10 },
+  multiline: { minHeight: 110, paddingTop: 14, textAlignVertical: 'top' },
+  /* A row that opens a list, in the same shape as `shapes.input`. */
   formPickerField: {
-    borderWidth: 1,
-    borderColor: '#d1d5db',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    backgroundColor: '#fff',
-  },
-  formPickerLabel: { fontSize: 12, color: '#6b7280', marginBottom: 4 },
-  formPickerValue: { fontSize: 15, color: '#111827' },
-  imageAttachBtn: {
+    minHeight: 52,
+    borderRadius: 14,
+    backgroundColor: colors.card,
+    paddingHorizontal: 16,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    borderWidth: 1,
-    borderColor: '#dbeafe',
-    backgroundColor: '#eff6ff',
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 9,
-    alignSelf: 'flex-start',
   },
-  imageAttachText: { color: '#007AFF', fontWeight: '600' },
-  metaLoadingRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: -4, marginBottom: 2 },
-  metaLoadingText: { color: '#6b7280', fontSize: 13 },
-  previewCard: { borderWidth: 1, borderColor: '#e5e7eb', borderRadius: 10, padding: 10, backgroundColor: '#fafafa' },
-  previewImage: { width: '100%', height: 180, borderRadius: 10 },
-  removeAttachmentBtn: { marginTop: 8 },
-  removeAttachmentText: { color: '#ef4444', fontWeight: '600' },
-  submitBtn: {
-    marginTop: 8,
-    backgroundColor: '#007AFF',
-    borderRadius: 8,
+  formPickerLabel: { fontSize: 17, color: colors.ink },
+  formPickerValue: { flex: 1, textAlign: 'right', fontSize: 17, color: colors.inkMuted },
+  metaLoadingRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginLeft: GUTTER, marginBottom: 10 },
+  previewCard: { marginTop: CARD_GAP },
+  previewImage: { width: '100%', height: 180 },
+  removeAttachmentBtn: { minHeight: TAP, alignItems: 'center', justifyContent: 'center' },
+  removeAttachmentText: { ...text.link, color: colors.red },
+  deleteBtn: { marginTop: 28 },
+
+  pickerOverlay: {
+    flex: 1,
+    backgroundColor: colors.scrim,
+    justifyContent: 'center',
     alignItems: 'center',
-    paddingVertical: 14,
   },
-  submitBtnText: { color: '#fff', fontWeight: '700', fontSize: 16 },
-  deleteFooter: {
-    position: 'absolute',
-    left: 16,
-    right: 16,
-    bottom: Platform.OS === 'ios' ? 24 : 16,
+  pickerContainer: {
+    backgroundColor: colors.card,
+    borderRadius: radius.xl,
+    paddingTop: 18,
+    paddingBottom: 8,
+    width: '80%',
+    maxWidth: 360,
+    maxHeight: '60%',
+    overflow: 'hidden',
   },
-  deleteBtn: {
-    borderWidth: 1,
-    borderColor: '#fecaca',
-    backgroundColor: '#fef2f2',
-    borderRadius: 8,
+  pickerTitle: { paddingHorizontal: 20, marginBottom: 8 },
+  pickerOption: {
+    minHeight: 48,
+    paddingHorizontal: 20,
+    flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 14,
+    gap: 12,
   },
-  deleteBtnText: { color: '#b91c1c', fontWeight: '700', fontSize: 16 },
+  pickerOptionText: { ...text.body, flex: 1 },
+  pickerOptionTextActive: { fontWeight: '600' },
+  pickerDivider: { marginLeft: 20 },
 });

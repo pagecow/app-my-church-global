@@ -1,23 +1,21 @@
 import React, { useCallback, useState } from 'react';
-import {
-  ActivityIndicator,
-  Alert,
-  FlatList,
-  Image,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from 'react-native';
-import { MaterialIcons } from '@expo/vector-icons';
+import { ActivityIndicator, Alert, FlatList, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useAuth } from '../../../context/AuthContext';
+import { Avatar, CircleButton, EmptyState, Loading, StackHeader } from '../../../components/ui';
 import {
   GroupJoinRequest,
   describeMemberDetails,
   groupsApi,
   groupsErrorMessage,
 } from '../../../lib/groups';
+import { colors, GUTTER, radius, shapes, TAP, text } from '../../../lib/theme';
+
+const RowSeparator = () => (
+  <View style={styles.separator}>
+    <View style={[shapes.divider, styles.rowDivider]} />
+  </View>
+);
 
 export default function GroupRequestsScreen() {
   const { token } = useAuth();
@@ -67,128 +65,102 @@ export default function GroupRequestsScreen() {
   };
 
   if (loading) {
-    return (
-      <View style={styles.loading}>
-        <ActivityIndicator size="large" color="#007AFF" />
-      </View>
-    );
+    return <Loading />;
   }
 
   return (
-    <View style={styles.container}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <MaterialIcons name="arrow-back" size={24} color="#333" />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Requests</Text>
-        <View style={{ width: 32 }} />
-      </View>
+    <View style={shapes.page}>
+      <StackHeader title="Requests" onBack={() => router.back()} />
 
       <FlatList
         data={requests}
         keyExtractor={(item) => item.id}
-        renderItem={({ item }) => {
+        contentContainerStyle={styles.listContent}
+        ItemSeparatorComponent={RowSeparator}
+        renderItem={({ item, index }) => {
           const busy = busyId === item.id;
           return (
-            <View style={styles.row}>
-              {item.profile_picture_url ? (
-                <Image source={{ uri: item.profile_picture_url }} style={styles.avatar} />
-              ) : (
-                <View style={[styles.avatar, styles.avatarFallback]}>
-                  <Text style={styles.avatarText}>{(item.name || '?')[0].toUpperCase()}</Text>
-                </View>
-              )}
-              <View style={{ flex: 1 }}>
-                <Text style={styles.name}>{item.name}</Text>
+            <View
+              style={[
+                styles.row,
+                index === 0 ? styles.rowFirst : null,
+                index === requests.length - 1 ? styles.rowLast : null,
+              ]}
+            >
+              <Avatar uri={item.profile_picture_url} name={item.name} size={40} />
+              <View style={styles.rowText}>
+                <Text style={text.headline}>{item.name}</Text>
                 {describeMemberDetails(item.birth_date, item.gender) ? (
                   <Text style={styles.details}>
                     {describeMemberDetails(item.birth_date, item.gender)}
                   </Text>
                 ) : null}
                 {item.message ? (
-                  <Text style={styles.message} numberOfLines={2}>
+                  <Text style={text.secondary} numberOfLines={2}>
                     {item.message}
                   </Text>
                 ) : (
-                  <Text style={styles.message}>wants to join this group</Text>
+                  <Text style={text.secondary}>wants to join this group</Text>
                 )}
               </View>
               <View style={styles.actions}>
                 {busy ? (
-                  <ActivityIndicator size="small" color="#007AFF" />
+                  <ActivityIndicator size="small" color={colors.azure} />
                 ) : (
                   <>
-                    <TouchableOpacity
-                      style={[styles.actionBtn, styles.approveBtn]}
+                    <CircleButton
+                      icon="checkmark"
+                      kind="accent"
                       onPress={() => decide(item, true)}
-                    >
-                      <MaterialIcons name="check" size={18} color="#fff" />
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[styles.actionBtn, styles.denyBtn]}
+                      accessibilityLabel={`Approve ${item.name}`}
+                    />
+                    <CircleButton
+                      icon="close"
                       onPress={() => decide(item, false)}
-                    >
-                      <MaterialIcons name="close" size={18} color="#ef4444" />
-                    </TouchableOpacity>
+                      accessibilityLabel={`Deny ${item.name}`}
+                    />
                   </>
                 )}
               </View>
             </View>
           );
         }}
-        ListEmptyComponent={
-          <View style={styles.emptyWrap}>
-            <MaterialIcons name="how-to-reg" size={44} color="#ccc" />
-            <Text style={styles.empty}>No pending requests.</Text>
-          </View>
-        }
+        ListEmptyComponent={<EmptyState icon="person-add-outline" title="No pending requests." />}
       />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f8f8f8' },
-  loading: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  header: {
-    paddingTop: 55,
-    paddingHorizontal: 16,
-    paddingBottom: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: '#eee',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: '#fff',
-  },
-  backBtn: { padding: 4 },
-  headerTitle: { fontSize: 17, fontWeight: '700' },
+  listContent: { paddingTop: 8, paddingBottom: 32 },
+
+  /* The requests are one white block: the list draws it row by row, so the first
+     and the last row carry the rounded corners. */
   row: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    backgroundColor: '#fff',
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
+    minHeight: 64,
+    marginHorizontal: GUTTER,
+    paddingVertical: 10,
+    paddingLeft: 12,
+    paddingRight: 6,
+    backgroundColor: colors.card,
   },
-  avatar: { width: 42, height: 42, borderRadius: 21 },
-  avatarFallback: { backgroundColor: '#3b82f6', justifyContent: 'center', alignItems: 'center' },
-  avatarText: { color: '#fff', fontWeight: '700', fontSize: 17 },
-  name: { fontSize: 15, fontWeight: '600', color: '#111' },
-  message: { fontSize: 12, color: '#777', marginTop: 2 },
-  details: { fontSize: 12, color: '#555', marginTop: 2, fontWeight: '600' },
-  actions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  actionBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    justifyContent: 'center',
+  rowFirst: { borderTopLeftRadius: radius.group, borderTopRightRadius: radius.group },
+  rowLast: { borderBottomLeftRadius: radius.group, borderBottomRightRadius: radius.group },
+  separator: { marginHorizontal: GUTTER, backgroundColor: colors.card },
+  /* Clears the row's picture: 12 (row padding) + 40 (picture) + 12 (gap). */
+  rowDivider: { marginLeft: 64 },
+
+  rowText: { flex: 1, minWidth: 0, gap: 1 },
+  details: { ...text.footnote, fontWeight: '600', color: colors.inkSoft },
+  /* Two round buttons side by side; the spinner that replaces them keeps the same room. */
+  actions: {
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
+    minWidth: TAP * 2,
+    minHeight: TAP,
   },
-  approveBtn: { backgroundColor: '#3b82f6' },
-  denyBtn: { backgroundColor: '#fef2f2' },
-  emptyWrap: { alignItems: 'center', paddingTop: 60 },
-  empty: { textAlign: 'center', color: '#999', marginTop: 10 },
 });

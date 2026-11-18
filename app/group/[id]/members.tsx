@@ -3,17 +3,24 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
-  Image,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
-import { MaterialIcons } from '@expo/vector-icons';
+import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
-import * as Clipboard from 'expo-clipboard';
 import { useAuth } from '../../../context/AuthContext';
+import {
+  Avatar,
+  Button,
+  Chip,
+  EmptyState,
+  Loading,
+  SectionTitle,
+  StackHeader,
+} from '../../../components/ui';
 import {
   Group,
   GroupMember,
@@ -21,6 +28,7 @@ import {
   groupsApi,
   groupsErrorMessage,
 } from '../../../lib/groups';
+import { colors, GUTTER, radius, shapes, text } from '../../../lib/theme';
 
 const roleLabel = (role: string) =>
   role === 'owner' ? 'Owner' : role === 'admin' ? 'Admin' : 'Member';
@@ -30,6 +38,12 @@ const firstNameOf = (name?: string | null) => {
   const first = (name || '').trim().split(/\s+/)[0];
   return first || 'That person';
 };
+
+const RowSeparator = () => (
+  <View style={styles.separator}>
+    <View style={[shapes.divider, styles.rowDivider]} />
+  </View>
+);
 
 export default function GroupMembersScreen() {
   const { token, user } = useAuth();
@@ -155,112 +169,106 @@ export default function GroupMembersScreen() {
   };
 
   if (loading) {
-    return (
-      <View style={styles.loading}>
-        <ActivityIndicator size="large" color="#007AFF" />
-      </View>
-    );
+    return <Loading />;
   }
 
   return (
-    <View style={styles.container}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <MaterialIcons name="arrow-back" size={24} color="#333" />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Members</Text>
-        <View style={{ width: 32 }} />
-      </View>
+    <View style={shapes.page}>
+      <StackHeader title="Members" onBack={() => router.back()} />
 
       <FlatList
         data={members}
         keyExtractor={(item) => item.user_id}
+        contentContainerStyle={styles.listContent}
+        ItemSeparatorComponent={RowSeparator}
         ListHeaderComponent={
-          <View>
+          <View style={styles.listHeader}>
             {canManage ? (
-              <View style={styles.inviteCard}>
-                <Text style={styles.inviteTitle}>Invite someone</Text>
-                <Text style={styles.inviteHint}>
+              <View>
+                <SectionTitle style={styles.firstTitle}>Invite someone</SectionTitle>
+                <Text style={[text.footnote, styles.inviteHint]}>
                   Clicking Invite automatically adds the user to your group, and a notification
                   will be sent to let them know they are part of your group now.
                 </Text>
-                <View style={styles.searchRow}>
-                  <MaterialIcons name="search" size={18} color="#64748b" />
+                <View style={[shapes.input, styles.searchField]}>
+                  <Ionicons name="search" size={18} color={colors.inkFaint} />
                   <TextInput
                     style={styles.searchInput}
                     value={search}
                     placeholder="Search by name or email"
-                    placeholderTextColor="#94a3b8"
+                    placeholderTextColor={colors.inkFaint}
                     autoCapitalize="none"
                     returnKeyType="search"
-                    onChangeText={(text) => {
-                      setSearch(text);
+                    onChangeText={(value) => {
+                      setSearch(value);
                       // Nothing is listed until something is typed, and then only the
                       // matches the server returns for that query.
-                      if (text.trim()) {
-                        runSearch(text);
+                      if (value.trim()) {
+                        runSearch(value);
                       } else {
                         latestQuery.current = '';
                         setResults([]);
                       }
                     }}
                   />
-                  {searching ? <ActivityIndicator size="small" color="#1d4ed8" /> : null}
+                  {searching ? <ActivityIndicator size="small" color={colors.azure} /> : null}
                 </View>
                 {!search.trim() ? null : results.length === 0 && !searching ? (
-                  <Text style={styles.inviteHint}>Nobody matches that search.</Text>
-                ) : (
-                  results.map((person) => {
-                    const invited = invitedIds.includes(person.id);
-                    const busy = invitingId === person.id;
-                    return (
-                      <View key={person.id} style={styles.candidateRow}>
-                        {person.profile_picture_url ? (
-                          <Image source={{ uri: person.profile_picture_url }} style={styles.candidateAvatar} />
-                        ) : (
-                          <View style={[styles.candidateAvatar, styles.avatarFallback]}>
-                            <Text style={styles.avatarText}>
-                              {(person.name || '?')[0].toUpperCase()}
-                            </Text>
+                  <Text style={[text.footnote, styles.noMatch]}>Nobody matches that search.</Text>
+                ) : results.length > 0 ? (
+                  <View style={[shapes.group, styles.results]}>
+                    {results.map((person, index) => {
+                      const invited = invitedIds.includes(person.id);
+                      const busy = invitingId === person.id;
+                      return (
+                        <React.Fragment key={person.id}>
+                          {index > 0 ? <View style={[shapes.divider, styles.rowDivider]} /> : null}
+                          <View style={styles.row}>
+                            <Avatar uri={person.profile_picture_url} name={person.name} size={40} />
+                            <View style={styles.rowText}>
+                              <Text style={text.headline} numberOfLines={1}>
+                                {person.name}
+                              </Text>
+                              {person.email ? (
+                                <Text style={text.secondary} numberOfLines={1}>
+                                  {person.email}
+                                </Text>
+                              ) : null}
+                            </View>
+                            {invited ? (
+                              <Chip label="Invited" />
+                            ) : (
+                              <Button
+                                label="Invite"
+                                size="small"
+                                loading={busy}
+                                onPress={() => invitePerson(person)}
+                                style={styles.inviteButton}
+                              />
+                            )}
                           </View>
-                        )}
-                        <View style={{ flex: 1 }}>
-                          <Text style={styles.candidateName} numberOfLines={1}>
-                            {person.name}
-                          </Text>
-                          {person.email ? (
-                            <Text style={styles.candidateEmail} numberOfLines={1}>
-                              {person.email}
-                            </Text>
-                          ) : null}
-                        </View>
-                        <TouchableOpacity
-                          style={[styles.inviteBtn, styles.inviteBtnSmall, (invited || busy) ? styles.inviteBtnDone : null]}
-                          onPress={() => invitePerson(person)}
-                          disabled={invited || busy}
-                        >
-                          {busy ? (
-                            <ActivityIndicator color="#fff" size="small" />
-                          ) : (
-                            <Text style={styles.inviteBtnText}>{invited ? 'Invited' : 'Invite'}</Text>
-                          )}
-                        </TouchableOpacity>
-                      </View>
-                    );
-                  })
-                )}
+                        </React.Fragment>
+                      );
+                    })}
+                  </View>
+                ) : null}
               </View>
             ) : null}
-            <Text style={styles.sectionHeader}>
+            <SectionTitle style={canManage ? styles.nextTitle : styles.firstTitle}>
               {members.length} member{members.length === 1 ? '' : 's'}
-            </Text>
+            </SectionTitle>
           </View>
         }
-        renderItem={({ item }) => {
+        renderItem={({ item, index }) => {
           const isSelf = item.user_id === user?.id;
           return (
             <TouchableOpacity
-              style={styles.row}
+              style={[
+                styles.row,
+                styles.memberRow,
+                index === 0 ? styles.rowFirst : null,
+                index === members.length - 1 ? styles.rowLast : null,
+              ]}
               activeOpacity={canManage && item.role !== 'owner' ? 0.7 : 1}
               onPress={() => {
                 if (item.role === 'owner') return;
@@ -286,109 +294,57 @@ export default function GroupMembersScreen() {
                 ]);
               }}
             >
-              {item.profile_picture_url ? (
-                <Image source={{ uri: item.profile_picture_url }} style={styles.avatar} />
-              ) : (
-                <View style={[styles.avatar, styles.avatarFallback]}>
-                  <Text style={styles.avatarText}>{(item.name || '?')[0].toUpperCase()}</Text>
-                </View>
-              )}
-              <View style={{ flex: 1 }}>
-                <Text style={styles.name}>
+              <Avatar uri={item.profile_picture_url} name={item.name} size={40} />
+              <View style={styles.rowText}>
+                <Text style={text.headline}>
                   {item.name}
                   {isSelf ? ' (you)' : ''}
                 </Text>
-                <Text style={styles.role}>{roleLabel(item.role)}</Text>
+                <Text style={text.secondary}>{roleLabel(item.role)}</Text>
               </View>
               {item.role === 'owner' ? (
-                <MaterialIcons name="star" size={18} color="#f59e0b" />
+                <Ionicons name="star" size={16} color={colors.inkFaint} />
+              ) : canManage ? (
+                <Ionicons name="ellipsis-horizontal" size={20} color={colors.inkFaint} />
               ) : null}
             </TouchableOpacity>
           );
         }}
-        ListEmptyComponent={<Text style={styles.empty}>No members yet.</Text>}
+        ListEmptyComponent={<EmptyState icon="people-outline" title="No members yet." />}
       />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f8f8f8' },
-  loading: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  header: {
-    paddingTop: 55,
-    paddingHorizontal: 16,
-    paddingBottom: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: '#eee',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: '#fff',
-  },
-  backBtn: { padding: 4 },
-  headerTitle: { fontSize: 17, fontWeight: '700' },
-  inviteCard: { backgroundColor: '#fff', padding: 16, borderBottomWidth: 1, borderBottomColor: '#eee' },
-  inviteTitle: { fontSize: 15, fontWeight: '700', color: '#111' },
-  inviteHint: { fontSize: 12, color: '#777', marginTop: 4, lineHeight: 17 },
-  inviteBtn: {
-    backgroundColor: '#3b82f6',
-    borderRadius: 8,
-    paddingVertical: 11,
-    alignItems: 'center',
-    marginTop: 10,
-  },
-  searchRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: '#fff',
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    borderRadius: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    marginTop: 10,
-  },
-  searchInput: { flex: 1, fontSize: 15, color: '#0f172a', paddingVertical: 2 },
-  candidateRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    paddingVertical: 10,
-    borderTopWidth: 1,
-    borderTopColor: '#f1f5f9',
-  },
-  candidateAvatar: { width: 34, height: 34, borderRadius: 17, backgroundColor: '#e2e8f0' },
-  candidateName: { fontSize: 15, fontWeight: '600', color: '#0f172a' },
-  candidateEmail: { fontSize: 12, color: '#64748b' },
-  inviteBtnSmall: { paddingHorizontal: 14, paddingVertical: 7, minWidth: 78 },
-  inviteBtnDone: { backgroundColor: '#94a3b8' },
-  inviteBtnText: { color: '#fff', fontWeight: '700', fontSize: 14 },
-  sectionHeader: {
-    paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 8,
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#888',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
+  listContent: { paddingBottom: 32 },
+  listHeader: { paddingHorizontal: GUTTER },
+  firstTitle: { marginTop: 8 },
+  nextTitle: { marginTop: 24 },
+  inviteHint: { marginBottom: 12 },
+  searchField: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 0 },
+  searchInput: { flex: 1, minHeight: 52, paddingVertical: 0, fontSize: 17, color: colors.ink },
+  noMatch: { marginTop: 10, marginLeft: GUTTER },
+  results: { marginTop: 10 },
+  inviteButton: { minWidth: 72 },
+
   row: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    backgroundColor: '#fff',
-    paddingHorizontal: 16,
-    paddingVertical: 13,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
+    minHeight: 64,
+    paddingVertical: 10,
+    paddingLeft: 12,
+    paddingRight: 14,
   },
-  avatar: { width: 42, height: 42, borderRadius: 21 },
-  avatarFallback: { backgroundColor: '#3b82f6', justifyContent: 'center', alignItems: 'center' },
-  avatarText: { color: '#fff', fontWeight: '700', fontSize: 17 },
-  name: { fontSize: 15, fontWeight: '600', color: '#111' },
-  role: { fontSize: 12, color: '#888', marginTop: 2 },
-  empty: { textAlign: 'center', padding: 30, color: '#999' },
+  rowText: { flex: 1, minWidth: 0, gap: 1 },
+  /* Clears the row's picture: 12 (row padding) + 40 (picture) + 12 (gap). */
+  rowDivider: { marginLeft: 64 },
+
+  /* The members are one white block: the list draws it row by row, so the first
+     and the last row carry the rounded corners. */
+  memberRow: { marginHorizontal: GUTTER, backgroundColor: colors.card },
+  rowFirst: { borderTopLeftRadius: radius.group, borderTopRightRadius: radius.group },
+  rowLast: { borderBottomLeftRadius: radius.group, borderBottomRightRadius: radius.group },
+  separator: { marginHorizontal: GUTTER, backgroundColor: colors.card },
 });

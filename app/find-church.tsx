@@ -1,24 +1,28 @@
 import React, { useState } from 'react';
-import { 
-  StyleSheet, 
-  View, 
-  Text, 
-  TextInput, 
-  FlatList, 
-  TouchableOpacity, 
-  Image, 
-  ActivityIndicator,
+import {
+  StyleSheet,
+  View,
+  Text,
+  TextInput,
+  FlatList,
+  TouchableOpacity,
   Linking,
 } from 'react-native';
 import axios from 'axios';
 import { useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { MaterialIcons } from '@expo/vector-icons';
+import { Ionicons } from '@expo/vector-icons';
+import { Button, EmptyState, Loading, Tile } from '../components/ui';
+import { colors, GUTTER, shapes, text } from '../lib/theme';
 
 // A free sign-up page. It is the only outside link this screen may carry, and
 // it opens in the phone's own browser, not inside the app.
 const CREATE_CHURCH_URL = 'https://appmychurch.com/Signup';
+
+const TILE_SIZE = 48;
+const ROW_PADDING_LEFT = 12;
+const ROW_GAP = 12;
 
 export default function FindChurchScreen() {
   const [search, setSearch] = useState('');
@@ -64,169 +68,155 @@ export default function FindChurchScreen() {
   };
 
   return (
-    <View style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Find Your Church</Text>
+    <View style={shapes.page}>
+      <View style={[styles.header, { paddingTop: insets.top + 28 }]}>
+        <Text style={text.largeTitle} accessibilityRole="header">
+          Find your church
+        </Text>
+        <Text style={styles.subtitle}>Search by name to join your church family.</Text>
+      </View>
+
+      <View style={styles.searchField}>
+        <Ionicons name="search" size={20} color={colors.inkSoft} />
         <TextInput
           style={styles.searchInput}
           placeholder="Search by name..."
+          placeholderTextColor={colors.inkFaint}
+          accessibilityLabel="Church name"
           value={search}
           onChangeText={handleSearch}
         />
       </View>
 
       {isLoading ? (
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#007AFF" />
-        </View>
+        <Loading />
       ) : (
         <FlatList
+          // One tap picks a church even while the keyboard is still up.
+          keyboardShouldPersistTaps="handled"
           style={styles.list}
+          // The rows share one white rounded block; an empty list shows a message on the page instead.
+          contentContainerStyle={churches.length > 0 ? [shapes.group, styles.results] : null}
           data={churches}
           keyExtractor={(item) => item.id}
-          renderItem={({ item }) => (
-            <TouchableOpacity 
-              style={styles.churchItem} 
-              onPress={() => selectChurch(item)}
-            >
-              {item.logo_url ? (
-                <Image source={{ uri: item.logo_url }} style={styles.logo} />
-              ) : (
-                <View style={[styles.logo, styles.logoFallback]}>
-                  <Text style={styles.logoText}>{(item.name || '?')[0].toUpperCase()}</Text>
+          renderItem={({ item }) => {
+            const location = [item.city, item.state_province].filter(Boolean).join(', ');
+            return (
+              <TouchableOpacity
+                style={styles.churchItem}
+                onPress={() => selectChurch(item)}
+                activeOpacity={0.6}
+                accessibilityRole="button"
+              >
+                {/* One letter when the church has no logo. */}
+                <Tile uri={item.logo_url} name={item.name} size={TILE_SIZE} fit="contain" />
+                <View style={styles.churchText}>
+                  <Text style={text.headline} numberOfLines={2}>
+                    {item.name}
+                  </Text>
+                  {location ? (
+                    <Text style={text.secondary} numberOfLines={1}>
+                      {location}
+                    </Text>
+                  ) : null}
                 </View>
-              )}
-              <View>
-                <Text style={styles.churchName}>{item.name}</Text>
-                <Text style={styles.churchLocation}>
-                  {[item.city, item.state_province].filter(Boolean).join(', ')}
-                </Text>
-              </View>
-            </TouchableOpacity>
-          )}
+                <Ionicons name="chevron-forward" size={18} color={colors.inkFaint} />
+              </TouchableOpacity>
+            );
+          }}
+          ItemSeparatorComponent={RowDivider}
           ListEmptyComponent={
-            <View style={styles.emptyContainer}>
-              <Text style={styles.emptyText}>
-                {search.length > 2 ? 'No churches found.' : 'Type at least 3 characters to search.'}
-              </Text>
-            </View>
+            search.length > 2 ? (
+              <EmptyState icon="search-outline" title="No churches found." />
+            ) : (
+              <Text style={styles.hint}>Type at least 3 characters to search.</Text>
+            )
           }
         />
       )}
 
       {/* Sits below the list in the normal layout flow, so it never covers a row. */}
       <View style={[styles.footer, { paddingBottom: 12 + insets.bottom }]}>
-        <TouchableOpacity
-          style={styles.createButton}
+        {/* One line: the words, then the "opens outside the app" icon to their right. */}
+        <Button
+          label="Create a Church App"
+          kind="plain"
+          iconRight="open-outline"
           onPress={openCreateChurch}
           accessibilityRole="link"
           accessibilityLabel="Create a Church App"
           accessibilityHint="Opens AppMyChurch.com in your browser"
-        >
-          {/* One line: the words, then the "opens outside the app" icon to their right. */}
-          <Text style={styles.createButtonText} numberOfLines={1}>
-            Create a Church App
-          </Text>
-          <MaterialIcons name="open-in-new" size={18} color="#fff" style={styles.createButtonIcon} />
-        </TouchableOpacity>
+        />
       </View>
     </View>
   );
 }
 
+function RowDivider() {
+  return <View style={[shapes.divider, styles.rowDivider]} />;
+}
+
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#fff',
-  },
   header: {
-    paddingTop: 60,
     paddingHorizontal: 20,
-    paddingBottom: 20,
-    backgroundColor: '#f8f8f8',
+    gap: 6,
   },
-  title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    marginBottom: 20,
+  subtitle: {
+    ...text.bodyLarge,
+    color: colors.inkMuted,
+  },
+  searchField: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    height: 48,
+    marginTop: 20,
+    marginHorizontal: GUTTER,
+    marginBottom: 16,
+    paddingHorizontal: 14,
+    borderRadius: 14,
+    backgroundColor: colors.fill,
   },
   searchInput: {
-    backgroundColor: '#fff',
-    padding: 15,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#ddd',
-    fontSize: 16,
-  },
-  loadingContainer: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+    minWidth: 0,
+    height: 48,
+    paddingVertical: 0,
+    fontSize: 17,
+    color: colors.ink,
   },
   list: {
     flex: 1,
   },
+  results: {
+    marginHorizontal: GUTTER,
+  },
   churchItem: {
     flexDirection: 'row',
-    padding: 15,
-    borderBottomWidth: 1,
-    borderBottomColor: '#eee',
     alignItems: 'center',
+    gap: ROW_GAP,
+    minHeight: 70,
+    paddingVertical: 11,
+    paddingLeft: ROW_PADDING_LEFT,
+    paddingRight: 10,
   },
-  logo: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    marginRight: 15,
+  churchText: {
+    flex: 1,
+    minWidth: 0,
+    gap: 2,
   },
-  churchName: {
-    fontSize: 18,
-    fontWeight: 'bold',
+  rowDivider: {
+    marginLeft: ROW_PADDING_LEFT + TILE_SIZE + ROW_GAP,
   },
-  churchLocation: {
-    color: '#666',
-  },
-  logoFallback: {
-    backgroundColor: '#3b82f6',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  logoText: {
-    color: '#fff',
-    fontWeight: 'bold',
-    fontSize: 22,
-  },
-  emptyContainer: {
-    padding: 40,
-    alignItems: 'center',
-  },
-  emptyText: {
-    color: '#999',
+  hint: {
+    ...text.body,
+    color: colors.inkMuted,
     textAlign: 'center',
+    paddingHorizontal: 32,
+    paddingVertical: 40,
   },
   footer: {
-    paddingHorizontal: 20,
+    paddingHorizontal: GUTTER,
     paddingTop: 12,
-    backgroundColor: '#fff',
-    borderTopWidth: 1,
-    borderTopColor: '#eee',
-  },
-  createButton: {
-    backgroundColor: '#007AFF',
-    padding: 15,
-    borderRadius: 8,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  createButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: 'bold',
-    textAlign: 'center',
-    flexShrink: 1,
-  },
-  createButtonIcon: {
-    marginLeft: 8,
   },
 });

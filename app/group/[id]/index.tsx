@@ -3,20 +3,29 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
-  Image,
   RefreshControl,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
-import { MaterialIcons } from '@expo/vector-icons';
+import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from '../../../context/AuthContext';
 import { PostCard } from '../../../components/PostCard';
+import {
+  Avatar,
+  EmptyState,
+  IconName,
+  Loading,
+  Notice,
+  StackHeader,
+  Tile,
+} from '../../../components/ui';
 import { usePaginatedPosts } from '../../../hooks/usePaginatedPosts';
 import { API_URL, Group, groupsApi, groupsErrorMessage } from '../../../lib/groups';
+import { CARD_GAP, colors, GUTTER, radius, shapes, text } from '../../../lib/theme';
 
 const REFRESH_KEY = 'needsGroupsRefresh';
 
@@ -106,113 +115,101 @@ export default function GroupDetailScreen() {
   );
 
   if (groupLoading) {
-    return (
-      <View style={styles.loading}>
-        <ActivityIndicator size="large" color="#007AFF" />
-      </View>
-    );
+    return <Loading />;
   }
 
   if (accessError || !group) {
     return (
-      <View style={styles.container}>
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-            <MaterialIcons name="arrow-back" size={24} color="#333" />
-            <Text style={styles.backText}>Back</Text>
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Group</Text>
-          <View style={{ width: 48 }} />
-        </View>
-        <View style={styles.center}>
-          <MaterialIcons name="lock-outline" size={44} color="#ccc" />
-          <Text style={styles.empty}>{accessError || 'This group is unavailable.'}</Text>
-        </View>
+      <View style={shapes.page}>
+        <StackHeader title="Group" onBack={() => router.back()} />
+        <EmptyState icon="lock-closed-outline" title={accessError || 'This group is unavailable.'} />
       </View>
     );
   }
 
   const ListHeader = () => (
     <View>
-      <View style={styles.groupHeader}>
-        <Text style={styles.groupName}>{group.name}</Text>
-        {group.description ? <Text style={styles.groupDescription}>{group.description}</Text> : null}
-        <View style={styles.metaRow}>
-          <MaterialIcons
-            name={group.visibility === 'private' ? 'lock' : 'public'}
-            size={14}
-            color="#888"
-          />
-          <Text style={styles.metaText}>
-            {group.visibility === 'private' ? 'Private' : 'Public'}
-            {typeof group.member_count === 'number'
-              ? ` · ${group.member_count} member${group.member_count === 1 ? '' : 's'}`
-              : ''}
-          </Text>
+      <View style={[shapes.card, styles.about]}>
+        <View style={styles.aboutTop}>
+          <Tile uri={group.cover_image_url} name={group.name} size={56} tinted={isMember} />
+          <View style={styles.aboutText}>
+            <Text style={text.title}>{group.name}</Text>
+            <View style={styles.metaRow}>
+              <Ionicons
+                name={group.visibility === 'private' ? 'lock-closed' : 'globe-outline'}
+                size={13}
+                color={colors.inkMuted}
+              />
+              <Text style={[text.secondary, styles.metaText]}>
+                {group.visibility === 'private' ? 'Private' : 'Public'}
+                {typeof group.member_count === 'number'
+                  ? ` · ${group.member_count} member${group.member_count === 1 ? '' : 's'}`
+                  : ''}
+              </Text>
+            </View>
+          </View>
         </View>
+        {group.description ? <Text style={styles.description}>{group.description}</Text> : null}
+        {!isMember ? (
+          <Notice
+            kind="neutral"
+            style={styles.joinNotice}
+            message={
+              group.membership_state === 'pending' || group.has_pending_request
+                ? 'Your request to join is waiting for approval.'
+                : group.visibility === 'private'
+                ? 'This is a private group. Request to join to see the feed.'
+                : 'Join this group to see the feed.'
+            }
+          />
+        ) : null}
       </View>
 
       {isMember ? (
-        <View style={styles.actionBar}>
-          <TouchableOpacity
-            style={styles.actionBtn}
+        <View style={[shapes.group, styles.block]}>
+          <ActionRow
+            icon="people-outline"
+            label="Members"
             onPress={() => router.push(`/group/${group.id}/members`)}
-          >
-            <MaterialIcons name="people" size={18} color="#333" />
-            <Text style={styles.actionText}>Members</Text>
-          </TouchableOpacity>
+          />
           {canManage ? (
-            <TouchableOpacity
-              style={styles.actionBtn}
-              onPress={() => router.push(`/group/${group.id}/requests`)}
-            >
-              <MaterialIcons name="how-to-reg" size={18} color="#333" />
-              <Text style={styles.actionText}>Requests</Text>
-            </TouchableOpacity>
+            <>
+              <View style={[shapes.divider, styles.actionDivider]} />
+              <ActionRow
+                icon="person-add-outline"
+                label="Requests"
+                onPress={() => router.push(`/group/${group.id}/requests`)}
+              />
+            </>
           ) : null}
           {canManage ? (
-            <TouchableOpacity
-              style={styles.actionBtn}
-              onPress={() => router.push(`/group/${group.id}/settings`)}
-            >
-              <MaterialIcons name="settings" size={18} color="#333" />
-              <Text style={styles.actionText}>Settings</Text>
-            </TouchableOpacity>
+            <>
+              <View style={[shapes.divider, styles.actionDivider]} />
+              <ActionRow
+                icon="settings-outline"
+                label="Settings"
+                onPress={() => router.push(`/group/${group.id}/settings`)}
+              />
+            </>
           ) : null}
         </View>
       ) : null}
 
       {canPost ? (
-        <View style={styles.postBar}>
-          <View style={styles.postBarInner}>
-            {user?.profile_picture_url ? (
-              <Image source={{ uri: user.profile_picture_url }} style={styles.postBarAvatar} />
-            ) : (
-              <View style={[styles.postBarAvatar, styles.avatarFallback]}>
-                <Text style={styles.avatarText}>{(user?.name || '?')[0].toUpperCase()}</Text>
-              </View>
-            )}
-            <TouchableOpacity
-              style={styles.postBarInputWrapper}
-              onPress={() =>
-                router.push({ pathname: '/create-post', params: { groupId: group.id } })
-              }
-            >
-              <Text style={styles.postBarPlaceholder}>Post in {group.name}</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      ) : null}
-
-      {!isMember ? (
-        <View style={styles.joinBanner}>
-          <Text style={styles.joinText}>
-            {group.membership_state === 'pending' || group.has_pending_request
-              ? 'Your request to join is waiting for approval.'
-              : group.visibility === 'private'
-              ? 'This is a private group. Request to join to see the feed.'
-              : 'Join this group to see the feed.'}
-          </Text>
+        <View style={styles.composer}>
+          <Avatar uri={user?.profile_picture_url} name={user?.name} size={36} />
+          <TouchableOpacity
+            style={styles.composerField}
+            onPress={() =>
+              router.push({ pathname: '/create-post', params: { groupId: group.id } })
+            }
+            accessibilityRole="button"
+            accessibilityLabel={`Post in ${group.name}`}
+          >
+            <Text style={styles.composerPlaceholder} numberOfLines={1}>
+              Post in {group.name}
+            </Text>
+          </TouchableOpacity>
         </View>
       ) : null}
     </View>
@@ -220,36 +217,16 @@ export default function GroupDetailScreen() {
 
   if (isPostsLoading && !isRefreshing) {
     return (
-      <View style={styles.container}>
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-            <MaterialIcons name="arrow-back" size={24} color="#333" />
-            <Text style={styles.backText}>Back</Text>
-          </TouchableOpacity>
-          <Text style={styles.headerTitle} numberOfLines={1}>
-            {group.name}
-          </Text>
-          <View style={{ width: 48 }} />
-        </View>
-        <View style={styles.center}>
-          <ActivityIndicator size="large" color="#007AFF" />
-        </View>
+      <View style={shapes.page}>
+        <StackHeader title={group.name} onBack={() => router.back()} />
+        <Loading />
       </View>
     );
   }
 
   return (
-    <View style={styles.container}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <MaterialIcons name="arrow-back" size={24} color="#333" />
-          <Text style={styles.backText}>Back</Text>
-        </TouchableOpacity>
-        <Text style={styles.headerTitle} numberOfLines={1}>
-          {group.name}
-        </Text>
-        <View style={{ width: 48 }} />
-      </View>
+    <View style={shapes.page}>
+      <StackHeader title={group.name} onBack={() => router.back()} />
 
       <FlatList
         data={posts}
@@ -262,9 +239,12 @@ export default function GroupDetailScreen() {
           />
         )}
         keyExtractor={(item) => String(item.id)}
+        contentContainerStyle={styles.listContent}
         ListHeaderComponent={ListHeader}
         refreshControl={
-          isMember ? <RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} /> : undefined
+          isMember ? (
+            <RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} tintColor={colors.inkMuted} />
+          ) : undefined
         }
         onEndReached={onEndReached}
         onScrollBeginDrag={markScrollable}
@@ -273,7 +253,7 @@ export default function GroupDetailScreen() {
         ListFooterComponent={
           isLoadingMore ? (
             <View style={styles.footerLoader}>
-              <ActivityIndicator size="small" color="#007AFF" />
+              <ActivityIndicator size="small" color={colors.azure} />
               <Text style={styles.footerText}>Loading more posts...</Text>
             </View>
           ) : !hasMore && posts.length > 0 ? (
@@ -284,9 +264,7 @@ export default function GroupDetailScreen() {
         }
         ListEmptyComponent={
           isMember ? (
-            <View style={styles.center}>
-              <Text style={styles.empty}>No posts in this group yet.</Text>
-            </View>
+            <EmptyState icon="chatbubbles-outline" title="No posts in this group yet." />
           ) : null
         }
       />
@@ -294,55 +272,60 @@ export default function GroupDetailScreen() {
   );
 }
 
+/** One line of the group's own menu: Members, Requests, Settings. */
+function ActionRow({ icon, label, onPress }: { icon: IconName; label: string; onPress: () => void }) {
+  return (
+    <TouchableOpacity
+      style={styles.actionRow}
+      onPress={onPress}
+      activeOpacity={0.75}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+    >
+      <Ionicons name={icon} size={22} color={colors.inkSoft} />
+      <Text style={styles.actionText} numberOfLines={1}>
+        {label}
+      </Text>
+      <Ionicons name="chevron-forward" size={18} color={colors.inkFaint} />
+    </TouchableOpacity>
+  );
+}
+
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f8f8f8' },
-  loading: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  center: { padding: 30, alignItems: 'center' },
-  empty: { textAlign: 'center', color: '#999', paddingHorizontal: 20, marginTop: 8 },
-  header: {
-    paddingTop: 55,
-    paddingHorizontal: 16,
-    paddingBottom: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: '#eee',
+  listContent: { paddingTop: 4, paddingBottom: 24 },
+  about: { marginHorizontal: GUTTER, marginBottom: CARD_GAP, padding: 16, gap: 12 },
+  aboutTop: { flexDirection: 'row', alignItems: 'center', gap: 14 },
+  aboutText: { flex: 1, minWidth: 0, gap: 4 },
+  metaRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  metaText: { flexShrink: 1 },
+  description: { ...text.body, color: colors.inkSoft },
+  block: { marginHorizontal: GUTTER, marginBottom: CARD_GAP },
+  actionRow: { flexDirection: 'row', alignItems: 'center', gap: 14, minHeight: 52, paddingHorizontal: 16 },
+  actionText: { flex: 1, fontSize: 17, color: colors.ink },
+  /* Clears the row's icon: 16 (row padding) + 22 (icon) + 14 (gap). */
+  actionDivider: { marginLeft: 52 },
+  composer: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: '#fff',
-  },
-  backBtn: { flexDirection: 'row', alignItems: 'center' },
-  backText: { fontSize: 16, marginLeft: 4 },
-  headerTitle: { fontSize: 17, fontWeight: '700', maxWidth: 200 },
-  groupHeader: { backgroundColor: '#fff', padding: 16, borderBottomWidth: 1, borderBottomColor: '#eee' },
-  groupName: { fontSize: 22, fontWeight: '700', color: '#111' },
-  groupDescription: { fontSize: 14, color: '#555', marginTop: 6, lineHeight: 20 },
-  metaRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 10 },
-  metaText: { fontSize: 12, color: '#888' },
-  actionBar: {
-    flexDirection: 'row',
-    backgroundColor: '#fff',
-    borderBottomWidth: 1,
-    borderBottomColor: '#eee',
-    paddingHorizontal: 8,
-  },
-  actionBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 12, paddingHorizontal: 12 },
-  actionText: { fontSize: 13, fontWeight: '600', color: '#333' },
-  postBar: { backgroundColor: '#fff', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#e5e5e5' },
-  postBarInner: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, gap: 10 },
-  postBarAvatar: { width: 40, height: 40, borderRadius: 20 },
-  avatarFallback: { backgroundColor: '#3b82f6', justifyContent: 'center', alignItems: 'center' },
-  avatarText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
-  postBarInputWrapper: {
-    flex: 1,
-    borderWidth: 1.5,
-    borderColor: '#ddd',
-    borderRadius: 20,
+    gap: 10,
+    marginHorizontal: GUTTER,
+    marginBottom: CARD_GAP,
     paddingVertical: 10,
-    paddingHorizontal: 14,
+    paddingHorizontal: 12,
+    backgroundColor: colors.card,
+    borderRadius: radius.xl,
   },
-  postBarPlaceholder: { color: '#999', fontSize: 15 },
-  joinBanner: { backgroundColor: '#eff6ff', padding: 16, borderBottomWidth: 1, borderBottomColor: '#dbeafe' },
-  joinText: { fontSize: 13, color: '#1e40af', lineHeight: 19 },
+  composerField: {
+    flex: 1,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: colors.page,
+    paddingHorizontal: 16,
+    justifyContent: 'center',
+  },
+  composerPlaceholder: { fontSize: 16, color: colors.inkMuted },
+  /* The grey note sits inside the white card, which already has its own padding. */
+  joinNotice: { marginHorizontal: 0 },
   footerLoader: { padding: 16, alignItems: 'center' },
-  footerText: { color: '#999', fontSize: 13, marginTop: 4 },
+  footerText: { ...text.footnote, marginTop: 4 },
 });

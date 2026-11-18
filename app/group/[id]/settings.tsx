@@ -1,6 +1,5 @@
 import React, { useCallback, useState } from 'react';
 import {
-  ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
   Platform,
@@ -11,16 +10,31 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { MaterialIcons } from '@expo/vector-icons';
+import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from '../../../context/AuthContext';
+import {
+  EmptyState,
+  GroupLabel,
+  HeaderAction,
+  Loading,
+  Notice,
+  SegmentedControl,
+  StackHeader,
+} from '../../../components/ui';
 import {
   Group,
   GroupVisibility,
   groupsApi,
   groupsErrorMessage,
 } from '../../../lib/groups';
+import { colors, GUTTER, shapes } from '../../../lib/theme';
+
+const VISIBILITY_OPTIONS: { value: GroupVisibility; label: string }[] = [
+  { value: 'private', label: 'Private' },
+  { value: 'public', label: 'Public' },
+];
 
 export default function GroupSettingsScreen() {
   const { token, user } = useAuth();
@@ -125,18 +139,17 @@ export default function GroupSettingsScreen() {
   };
 
   if (loading) {
-    return (
-      <View style={styles.loading}>
-        <ActivityIndicator size="large" color="#007AFF" />
-      </View>
-    );
+    return <Loading />;
   }
 
   if (!group || !isOwner) {
     return (
-      <View style={styles.loading}>
-        <MaterialIcons name="lock-outline" size={44} color="#ccc" />
-        <Text style={styles.helper}>Only the group owner can change these settings.</Text>
+      <View style={shapes.page}>
+        <StackHeader title="Group Settings" onBack={() => router.back()} />
+        <EmptyState
+          icon="lock-closed-outline"
+          title="Only the group owner can change these settings."
+        />
       </View>
     );
   }
@@ -144,33 +157,21 @@ export default function GroupSettingsScreen() {
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      style={styles.container}
+      style={shapes.page}
     >
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <MaterialIcons name="arrow-back" size={24} color="#333" />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Group Settings</Text>
-        <TouchableOpacity
-          style={[styles.saveBtn, (!name.trim() || saving) && styles.saveBtnDisabled]}
-          onPress={save}
-          disabled={!name.trim() || saving}
-        >
-          {saving ? (
-            <ActivityIndicator color="#fff" size="small" />
-          ) : (
-            <Text style={styles.saveBtnText}>Save</Text>
-          )}
-        </TouchableOpacity>
-      </View>
+      <StackHeader
+        title="Group Settings"
+        onBack={() => router.back()}
+        right={<HeaderAction label="Save" onPress={save} disabled={!name.trim()} loading={saving} />}
+      />
 
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        <Text style={styles.label}>Group name</Text>
-        <TextInput style={styles.input} value={name} onChangeText={setName} maxLength={80} />
+        <GroupLabel>Group name</GroupLabel>
+        <TextInput style={shapes.input} value={name} onChangeText={setName} maxLength={80} />
 
-        <Text style={styles.label}>Description</Text>
+        <GroupLabel style={styles.labelGap}>Description</GroupLabel>
         <TextInput
-          style={[styles.input, styles.multiline]}
+          style={[shapes.input, styles.multiline]}
           value={description}
           onChangeText={setDescription}
           multiline
@@ -178,48 +179,40 @@ export default function GroupSettingsScreen() {
           maxLength={500}
         />
 
-        <Text style={styles.label}>Who can join</Text>
-        <View style={styles.segmented}>
-          <TouchableOpacity
-            style={[styles.segment, visibility === 'private' && styles.segmentActive]}
-            onPress={() => setVisibility('private')}
-          >
-            <Text
-              style={[styles.segmentText, visibility === 'private' && styles.segmentTextActive]}
-            >
-              Private
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.segment, visibility === 'public' && styles.segmentActive]}
-            onPress={() => setVisibility('public')}
-          >
-            <Text
-              style={[styles.segmentText, visibility === 'public' && styles.segmentTextActive]}
-            >
-              Public
-            </Text>
-          </TouchableOpacity>
-        </View>
+        <GroupLabel style={styles.labelGap}>Who can join</GroupLabel>
+        <SegmentedControl<GroupVisibility>
+          options={VISIBILITY_OPTIONS}
+          value={visibility}
+          onChange={setVisibility}
+        />
 
         {group.topic_synced_at === null ? (
-          <View style={styles.warn}>
-            <MaterialIcons name="sync-problem" size={16} color="#92400e" />
-            <Text style={styles.warnText}>
-              Push notifications for this group have not been set up yet. A background job is
-              retrying; members may not receive pushes until it completes.
-            </Text>
-          </View>
+          <Notice
+            kind="neutral"
+            style={styles.notice}
+            message="Push notifications for this group have not been set up yet. A background job is retrying; members may not receive pushes until it completes."
+          />
         ) : null}
 
-        <View style={styles.dangerZone}>
-          <TouchableOpacity style={styles.dangerRow} onPress={archive}>
-            <MaterialIcons name="archive" size={20} color="#b45309" />
-            <Text style={[styles.dangerText, { color: '#b45309' }]}>Archive group</Text>
+        <View style={[shapes.group, styles.actions]}>
+          <TouchableOpacity
+            style={styles.actionRow}
+            onPress={archive}
+            activeOpacity={0.75}
+            accessibilityRole="button"
+          >
+            <Ionicons name="archive-outline" size={22} color={colors.inkSoft} />
+            <Text style={styles.actionText}>Archive group</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.dangerRow} onPress={remove}>
-            <MaterialIcons name="delete-outline" size={20} color="#ef4444" />
-            <Text style={styles.dangerText}>Delete group</Text>
+          <View style={[shapes.divider, styles.actionDivider]} />
+          <TouchableOpacity
+            style={styles.actionRow}
+            onPress={remove}
+            activeOpacity={0.75}
+            accessibilityRole="button"
+          >
+            <Ionicons name="trash-outline" size={22} color={colors.red} />
+            <Text style={[styles.actionText, styles.actionTextDanger]}>Delete group</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>
@@ -228,73 +221,15 @@ export default function GroupSettingsScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f8f8f8' },
-  loading: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 30 },
-  helper: { color: '#999', fontSize: 15, marginTop: 10, textAlign: 'center' },
-  header: {
-    paddingTop: 55,
-    paddingHorizontal: 16,
-    paddingBottom: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: '#eee',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: '#fff',
-  },
-  backBtn: { padding: 4 },
-  headerTitle: { fontSize: 17, fontWeight: '700' },
-  saveBtn: {
-    backgroundColor: '#3b82f6',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 16,
-    minWidth: 64,
-    alignItems: 'center',
-  },
-  saveBtnDisabled: { backgroundColor: '#bfdbfe' },
-  saveBtnText: { color: '#fff', fontWeight: '700', fontSize: 14 },
-  content: { padding: 16 },
-  label: { fontSize: 13, fontWeight: '700', color: '#666', marginBottom: 6, marginTop: 14 },
-  input: {
-    backgroundColor: '#fff',
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    borderRadius: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontSize: 15,
-  },
-  multiline: { minHeight: 96 },
-  segmented: {
-    flexDirection: 'row',
-    backgroundColor: '#e9eef5',
-    borderRadius: 10,
-    padding: 3,
-  },
-  segment: { flex: 1, paddingVertical: 9, alignItems: 'center', borderRadius: 8 },
-  segmentActive: { backgroundColor: '#fff' },
-  segmentText: { fontSize: 14, color: '#666', fontWeight: '600' },
-  segmentTextActive: { color: '#111' },
-  warn: {
-    flexDirection: 'row',
-    gap: 8,
-    backgroundColor: '#fef3c7',
-    padding: 12,
-    borderRadius: 10,
-    marginTop: 18,
-    alignItems: 'flex-start',
-  },
-  warnText: { flex: 1, fontSize: 12, color: '#92400e', lineHeight: 17 },
-  dangerZone: { marginTop: 28, backgroundColor: '#fff', borderRadius: 10, overflow: 'hidden' },
-  dangerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    paddingVertical: 15,
-    paddingHorizontal: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f1f5f9',
-  },
-  dangerText: { fontSize: 15, color: '#ef4444', fontWeight: '600' },
+  content: { paddingHorizontal: GUTTER, paddingTop: 12, paddingBottom: 32 },
+  labelGap: { marginTop: 22 },
+  multiline: { minHeight: 110 },
+  /* A Notice brings side margins for the bare page; here the page already has them. */
+  notice: { marginHorizontal: 0, marginTop: 22 },
+  actions: { marginTop: 28 },
+  actionRow: { flexDirection: 'row', alignItems: 'center', gap: 14, minHeight: 52, paddingHorizontal: 16 },
+  actionText: { flex: 1, fontSize: 17, color: colors.ink },
+  actionTextDanger: { color: colors.red },
+  /* Clears the row's icon: 16 (row padding) + 22 (icon) + 14 (gap). */
+  actionDivider: { marginLeft: 52 },
 });

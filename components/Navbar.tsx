@@ -1,20 +1,38 @@
 import React, { useCallback, useState } from 'react';
-import { StyleSheet, View, Text, TouchableOpacity, Image, Modal, Alert } from 'react-native';
-import { MaterialIcons } from '@expo/vector-icons';
+import { StyleSheet, View, Text, TouchableOpacity, Modal } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../context/AuthContext';
 import { useFocusEffect, useRouter } from 'expo-router';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Clipboard from 'expo-clipboard';
 import axios from 'axios';
+import { Avatar, CircleButton, IconName, Tile } from './ui';
+import { colors, GUTTER, shapes, TAP, text } from '../lib/theme';
 
 const API_URL = 'https://appmychurch.com/api/v1';
 
-export default function Navbar() {
+/**
+ * The top of every tab.
+ *
+ * Home passes no `title` and gets the church's logo and name. Every other tab
+ * passes its own title ("Events"). `onAdd` shows the round blue plus button,
+ * which screens pass for admins only.
+ */
+export default function Navbar({
+  title,
+  onAdd,
+  addLabel = 'Add',
+}: {
+  title?: string;
+  onAdd?: () => void;
+  addLabel?: string;
+}) {
   const { user, appData, token, logout } = useAuth();
   const [drawerVisible, setDrawerVisible] = useState(false);
   const [copied, setCopied] = useState('');
   const [unreadCount, setUnreadCount] = useState(0);
   const router = useRouter();
+  const insets = useSafeAreaInsets();
 
   const nnSubId = user?.native_notify_indie_id;
 
@@ -66,74 +84,115 @@ export default function Navbar() {
     router.push('/share');
   };
 
-  const profilePic = user?.profile_picture_url;
+  const go = (path: '/profile' | '/about') => {
+    setDrawerVisible(false);
+    router.push(path);
+  };
+
+  const churchName = appData?.name || 'App My Church';
 
   return (
-    <View style={styles.navbar}>
-      <Text style={styles.churchName} numberOfLines={1}>{appData?.name || 'App My Church'}</Text>
+    <View style={[styles.navbar, { paddingTop: insets.top + 6 }]}>
+      {title ? (
+        <Text style={[text.largeTitle, styles.title]} numberOfLines={1} accessibilityRole="header">
+          {title}
+        </Text>
+      ) : (
+        <>
+          <Tile uri={appData?.logo_url} name={churchName} size={38} fit="contain" />
+          <Text
+            style={[text.title, styles.churchName]}
+            numberOfLines={1}
+            adjustsFontSizeToFit
+            minimumFontScale={0.75}
+            accessibilityRole="header"
+          >
+            {churchName}
+          </Text>
+        </>
+      )}
+
+      {onAdd ? <CircleButton icon="add" kind="accent" size={32} onPress={onAdd} accessibilityLabel={addLabel} /> : null}
+
       <TouchableOpacity
-        style={styles.bellBtn}
+        style={styles.iconBtn}
         onPress={() => router.push('/notifications')}
-        accessibilityLabel="Notifications"
+        accessibilityLabel={unreadCount > 0 ? `Notifications, ${unreadCount} new` : 'Notifications'}
         accessibilityRole="button"
       >
-        <MaterialIcons name="notifications" size={26} color="#333" />
+        <Ionicons name="notifications-outline" size={25} color={colors.ink} />
         {unreadCount > 0 ? (
           <View style={styles.badge}>
             <Text style={styles.badgeText}>{unreadCount > 9 ? '9+' : String(unreadCount)}</Text>
           </View>
         ) : null}
       </TouchableOpacity>
-      <TouchableOpacity onPress={() => setDrawerVisible(true)}>
-        {profilePic ? (
-          <Image source={{ uri: profilePic }} style={styles.avatar} />
-        ) : (
-          <View style={[styles.avatar, styles.avatarFallback]}>
-            <MaterialIcons name="person" size={22} color="#fff" />
-          </View>
-        )}
+
+      <TouchableOpacity
+        style={styles.iconBtn}
+        onPress={() => setDrawerVisible(true)}
+        accessibilityLabel="Your profile and menu"
+        accessibilityRole="button"
+      >
+        <Avatar uri={user?.profile_picture_url} name={user?.name} size={36} />
       </TouchableOpacity>
 
-      <Modal visible={drawerVisible} animationType="slide" transparent>
+      <Modal visible={drawerVisible} animationType="slide" transparent onRequestClose={() => setDrawerVisible(false)}>
         <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={() => setDrawerVisible(false)}>
-          <View style={styles.drawer} onStartShouldSetResponder={() => true}>
-            <View style={styles.drawerHeader}>
-              <Text style={styles.drawerTitle}>Menu</Text>
-              <TouchableOpacity onPress={() => setDrawerVisible(false)}>
-                <MaterialIcons name="close" size={28} color="#333" />
-              </TouchableOpacity>
+          <View
+            style={[styles.sheet, { paddingBottom: insets.bottom + 16 }]}
+            onStartShouldSetResponder={() => true}
+          >
+            <View style={styles.grabber} />
+
+            <View style={styles.me}>
+              <Avatar uri={user?.profile_picture_url} name={user?.name} size={52} />
+              <View style={styles.meText}>
+                <Text style={text.headline} numberOfLines={1}>
+                  {user?.name || 'Your account'}
+                </Text>
+                <Text style={text.secondary} numberOfLines={1}>
+                  {churchName}
+                </Text>
+              </View>
+              <CircleButton icon="close" onPress={() => setDrawerVisible(false)} accessibilityLabel="Close menu" />
             </View>
 
-            <TouchableOpacity style={styles.drawerItem} onPress={() => { setDrawerVisible(false); router.push('/profile'); }}>
-              <MaterialIcons name="person" size={24} color="#333" />
-              <Text style={styles.drawerText}>Profile</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity style={styles.drawerItem} onPress={() => { setDrawerVisible(false); router.push('/about'); }}>
-              <MaterialIcons name="church" size={24} color="#333" />
-              <Text style={styles.drawerText}>About Our Church</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity style={styles.drawerItem} onPress={handleShare}>
-              <MaterialIcons name="share" size={24} color="#333" />
-              <Text style={styles.drawerText}>Share App</Text>
-            </TouchableOpacity>
-
-            <View style={styles.shareLinks}>
-              <TouchableOpacity style={styles.copyBtn} onPress={() => copyLink('apple')}>
-                <MaterialIcons name="phone-iphone" size={20} color="#333" />
-                <Text style={styles.copyText}>{copied === 'apple' ? 'Copied!' : 'Copy Apple Link'}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.copyBtn} onPress={() => copyLink('google')}>
-                <MaterialIcons name="phone-android" size={20} color="#333" />
-                <Text style={styles.copyText}>{copied === 'google' ? 'Copied!' : 'Copy Google Link'}</Text>
-              </TouchableOpacity>
+            <View style={shapes.group}>
+              <MenuRow icon="person-outline" label="Profile" onPress={() => go('/profile')} />
+              <View style={[shapes.divider, styles.rowDivider]} />
+              <MenuRow icon="business-outline" label="About Our Church" onPress={() => go('/about')} />
+              <View style={[shapes.divider, styles.rowDivider]} />
+              <MenuRow icon="share-outline" label="Share App" onPress={handleShare} />
             </View>
 
-            <TouchableOpacity style={[styles.drawerItem, styles.logoutItem]} onPress={handleLogout}>
-              <MaterialIcons name="logout" size={24} color="#ef4444" />
-              <Text style={[styles.drawerText, { color: '#ef4444' }]}>Logout</Text>
-            </TouchableOpacity>
+            {appData?.apple_app_store_link || appData?.google_app_store_link ? (
+              <View style={[shapes.group, styles.groupGap]}>
+                {appData?.apple_app_store_link ? (
+                  <MenuRow
+                    icon="logo-apple"
+                    label={copied === 'apple' ? 'Copied!' : 'Copy Apple Link'}
+                    trailing="copy-outline"
+                    onPress={() => copyLink('apple')}
+                  />
+                ) : null}
+                {appData?.apple_app_store_link && appData?.google_app_store_link ? (
+                  <View style={[shapes.divider, styles.rowDivider]} />
+                ) : null}
+                {appData?.google_app_store_link ? (
+                  <MenuRow
+                    icon="logo-google-playstore"
+                    label={copied === 'google' ? 'Copied!' : 'Copy Google Link'}
+                    trailing="copy-outline"
+                    onPress={() => copyLink('google')}
+                  />
+                ) : null}
+              </View>
+            ) : null}
+
+            <View style={[shapes.group, styles.groupGap]}>
+              <MenuRow icon="log-out-outline" label="Log Out" danger onPress={handleLogout} />
+            </View>
           </View>
         </TouchableOpacity>
       </Modal>
@@ -141,33 +200,80 @@ export default function Navbar() {
   );
 }
 
+function MenuRow({
+  icon,
+  label,
+  onPress,
+  trailing = 'chevron-forward',
+  danger = false,
+}: {
+  icon: IconName;
+  label: string;
+  onPress: () => void;
+  trailing?: IconName;
+  danger?: boolean;
+}) {
+  const color = danger ? colors.red : colors.ink;
+  return (
+    <TouchableOpacity style={styles.row} onPress={onPress} accessibilityRole="button" accessibilityLabel={label}>
+      <Ionicons name={icon} size={22} color={danger ? colors.red : colors.inkSoft} />
+      <Text style={[styles.rowText, { color }]} numberOfLines={1}>
+        {label}
+      </Text>
+      {danger ? null : <Ionicons name={trailing} size={18} color={colors.inkFaint} />}
+    </TouchableOpacity>
+  );
+}
+
 const styles = StyleSheet.create({
-  navbar: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingTop: 55, paddingBottom: 12, paddingHorizontal: 16, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#eee' },
-  churchName: { fontSize: 18, fontWeight: 'bold', flex: 1 },
-  bellBtn: { padding: 4, marginRight: 14 },
+  navbar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingLeft: GUTTER,
+    paddingRight: 8,
+    paddingBottom: 6,
+    backgroundColor: colors.page,
+    gap: 2,
+  },
+  title: { flex: 1 },
+  churchName: { flex: 1, marginLeft: 8 },
+  iconBtn: { width: TAP, height: TAP, alignItems: 'center', justifyContent: 'center' },
   badge: {
     position: 'absolute',
-    top: -2,
-    right: -4,
-    minWidth: 17,
-    height: 17,
+    top: 4,
+    right: 3,
+    minWidth: 18,
+    height: 18,
     borderRadius: 9,
-    backgroundColor: '#ef4444',
+    backgroundColor: colors.red,
+    borderWidth: 2,
+    borderColor: colors.page,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 4,
+    paddingHorizontal: 3,
   },
-  badgeText: { color: '#fff', fontSize: 10, fontWeight: '700' },
-  avatar: { width: 36, height: 36, borderRadius: 18 },
-  avatarFallback: { backgroundColor: '#3b82f6', justifyContent: 'center', alignItems: 'center' },
-  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
-  drawer: { backgroundColor: '#fff', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, paddingBottom: 40 },
-  drawerHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
-  drawerTitle: { fontSize: 20, fontWeight: 'bold' },
-  drawerItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: '#f0f0f0' },
-  drawerText: { fontSize: 16, marginLeft: 12 },
-  logoutItem: { borderBottomWidth: 0, marginTop: 10 },
-  shareLinks: { paddingLeft: 36, paddingVertical: 8 },
-  copyBtn: { flexDirection: 'row', alignItems: 'center', paddingVertical: 8 },
-  copyText: { marginLeft: 8, color: '#666', fontSize: 14 },
+  badgeText: { color: colors.white, fontSize: 10, fontWeight: '700' },
+
+  overlay: { flex: 1, backgroundColor: colors.scrim, justifyContent: 'flex-end' },
+  sheet: {
+    backgroundColor: colors.page,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: GUTTER,
+    paddingTop: 8,
+  },
+  grabber: {
+    alignSelf: 'center',
+    width: 36,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: colors.grabber,
+    marginBottom: 10,
+  },
+  me: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 16 },
+  meText: { flex: 1, gap: 2 },
+  groupGap: { marginTop: 12 },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 14, minHeight: 54, paddingHorizontal: 16 },
+  rowText: { flex: 1, fontSize: 17 },
+  rowDivider: { marginLeft: 52 },
 });

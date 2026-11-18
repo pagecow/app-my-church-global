@@ -1,231 +1,101 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  ActivityIndicator,
   Alert,
-  FlatList,
-  Image,
-  KeyboardAvoidingView,
-  Linking,
-  Modal,
-  Platform,
+  Pressable,
   RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { MaterialIcons } from '@expo/vector-icons';
-import * as ImagePicker from 'expo-image-picker';
-import DateTimePicker from '@react-native-community/datetimepicker';
+import { Ionicons } from '@expo/vector-icons';
 import Navbar from '../../components/Navbar';
+import EventDetailSheet from '../../components/EventDetailSheet';
+import EventFormSheet from '../../components/EventFormSheet';
+import { Chip, EmptyState, Loading, SectionTitle, SegmentedControl } from '../../components/ui';
 import { useAuth } from '../../context/AuthContext';
+import { colors, GUTTER, shapes, TAP, text } from '../../lib/theme';
+import {
+  buildMonth,
+  buildUpcoming,
+  dayKey,
+  EventItem,
+  EventRow,
+  EventRsvp,
+  formatDayLong,
+  formatStartTime,
+  isRepeating,
+  monthGrid,
+  MONTHS,
+  MONTHS_SHORT,
+  myRsvp,
+  repeatLabelShort,
+  rowMeta,
+  rsvpLabel,
+  RSVPResponse,
+  sameDay,
+  startOfDay,
+} from '../../lib/events';
 
 const API_URL = 'https://appmychurch.com/api/v1';
-const DEFAULT_EVENT_THUMBNAIL = 'https://appmychurch.com/appuser/content.jpg';
-const URL_REGEX = /(https?:\/\/[^\s]+)/gi;
+const WEEKDAY_LETTERS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 
-type EventItem = {
-  id: string;
-  title: string;
-  description?: string | null;
-  mediaUrl?: string | null;
-  startDate?: string | null;
-  endDate?: string | null;
-  startTime?: string | null;
-  endTime?: string | null;
-  location?: string | null;
-  createdAt: string;
-  rsvps?: EventRsvp[];
-};
-
-type RSVPResponse = 'YES' | 'NO' | 'MAYBE';
-type EventRsvp = {
-  id: string;
-  church_userId: string;
-  eventId: string;
-  response: RSVPResponse;
-  church_user?: {
-    id: string;
-    name: string | null;
-    profile_picture_url: string | null;
-  };
-};
+type ViewMode = 'upcoming' | 'calendar';
 
 export default function EventsScreen() {
   const { token, user } = useAuth();
-  const now = new Date();
+  const isAdmin = Boolean(user?.is_admin);
+
   const [events, setEvents] = useState<EventItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [showCreateModal, setShowCreateModal] = useState(false);
-  const [editingEventId, setEditingEventId] = useState<string | null>(null);
-  const [isCreating, setIsCreating] = useState(false);
-  const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
-  const [location, setLocation] = useState('');
-  const [asset, setAsset] = useState<ImagePicker.ImagePickerAsset | null>(null);
-
-  const [startDateValue, setStartDateValue] = useState<Date | null>(now);
-  const [endDateValue, setEndDateValue] = useState<Date | null>(now);
-  const [startTimeValue, setStartTimeValue] = useState<Date | null>(now);
-  const [endTimeValue, setEndTimeValue] = useState<Date | null>(now);
-
-  const [showStartDatePicker, setShowStartDatePicker] = useState(false);
-  const [showEndDatePicker, setShowEndDatePicker] = useState(false);
-  const [showStartTimePicker, setShowStartTimePicker] = useState(false);
-  const [showEndTimePicker, setShowEndTimePicker] = useState(false);
+  const [view, setView] = useState<ViewMode>('upcoming');
   const [rsvpLoadingByEvent, setRsvpLoadingByEvent] = useState<Record<string, boolean>>({});
 
-  const formatDateForApi = (date: Date) => {
-    const y = date.getFullYear();
-    const m = `${date.getMonth() + 1}`.padStart(2, '0');
-    const d = `${date.getDate()}`.padStart(2, '0');
-    return `${y}-${m}-${d}`;
-  };
+  // The day is read once per visit to the screen; a list that re-sorted itself
+  // at midnight under someone's finger would be worse than one that is a day old.
+  const [today, setToday] = useState(() => startOfDay(new Date()));
+  const [month, setMonth] = useState(() => ({ year: today.getFullYear(), month: today.getMonth() }));
+  const [selectedDay, setSelectedDay] = useState<Date>(today);
 
-  const formatTimeForApi = (date: Date) => {
-    const h = `${date.getHours()}`.padStart(2, '0');
-    const m = `${date.getMinutes()}`.padStart(2, '0');
-    return `${h}:${m}`;
-  };
+  const [detail, setDetail] = useState<{ id: string; day: Date | null } | null>(null);
+  const [form, setForm] = useState<{ visible: boolean; event: EventItem | null; day: Date | null }>({
+    visible: false,
+    event: null,
+    day: null,
+  });
 
-  // The API stores the wall-clock values the admin picked in the UTC components of these
-  // timestamps: startDate comes back as "yyyy-mm-ddT00:00:00Z" and startTime as
-  // "...T18:00:00Z" for a 6:00 PM event. Reading them with local getters (new Date(...)
-  // .toLocaleTimeString()) shifts them by the device's UTC offset, so 6:00 PM renders as
-  // 12:00 PM six hours west of UTC. Rebuilding the Date from the UTC components gives a
-  // local Date whose fields ARE what was entered, which fixes both the display and the
-  // edit picker (and lets the existing formatTimeForApi/formatDateForApi round-trip it).
-  const parseWallClock = (value?: string | null): Date | null => {
-    if (!value) return null;
-    const parsed = new Date(value);
-    if (Number.isNaN(parsed.getTime())) return null;
-    return new Date(
-      parsed.getUTCFullYear(),
-      parsed.getUTCMonth(),
-      parsed.getUTCDate(),
-      parsed.getUTCHours(),
-      parsed.getUTCMinutes(),
-      parsed.getUTCSeconds()
-    );
-  };
-
-  const getExtensionFromMime = (mimeType: string) => {
-    const parts = mimeType.split('/');
-    return parts.length > 1 ? parts[1] : 'bin';
-  };
-
-  const pickEventImage = async () => {
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (permission.status !== 'granted') {
-      Alert.alert('Permission Required', 'Please allow photo library access to attach an event image.');
-      return;
-    }
-
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: 'images',
-      allowsEditing: false,
-      quality: 0.8,
-    });
-
-    if (!result.canceled && result.assets.length > 0) {
-      setAsset(result.assets[0]);
-    }
-  };
-
-  const uploadImageIfNeeded = async () => {
-    if (!asset || !token) return null;
-
-    const mimeType = asset.mimeType || 'image/jpeg';
-    const extension = getExtensionFromMime(mimeType);
-    const fileName = `${user?.id || 'church-user'}-event-${Date.now()}.${extension}`;
-    const bucket = 'amc_image_bucket';
-
-    const signedRes = await axios.post(
-      `${API_URL}/uploads/signed-url`,
-      { files: [{ name: fileName, type: mimeType, bucket }] },
-      { headers: { Authorization: `Bearer ${token}` } }
-    );
-
-    const signedUrl = signedRes.data?.signedUrls?.[0]?.url;
-    if (!signedUrl) throw new Error('Failed to get upload URL');
-
-    const fileResponse = await fetch(asset.uri);
-    const blob = await fileResponse.blob();
-
-    const uploadResponse = await fetch(signedUrl, {
-      method: 'PUT',
-      headers: { 'Content-Type': mimeType },
-      body: blob,
-    });
-
-    if (!uploadResponse.ok) throw new Error('Image upload failed');
-
-    return {
-      media_key: fileName,
-      media_url: `https://storage.googleapis.com/${bucket}/${fileName}`,
-      media_size: String(asset.fileSize || 0),
-      media_type: mimeType,
-    };
-  };
-
-  const fetchEvents = async () => {
+  const fetchEvents = useCallback(async () => {
     try {
-      setLoading(true);
       const appId = await AsyncStorage.getItem('appId');
       if (!appId || !token) {
         setEvents([]);
         return;
       }
-      const res = await axios.get(`${API_URL}/events?appId=${appId}&page=1&limit=30`, {
+      // The server lists events newest-made first and knows nothing of
+      // "upcoming", so the app asks for all of them and sorts by date itself.
+      const res = await axios.get(`${API_URL}/events?appId=${appId}&page=1&limit=100`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       setEvents(Array.isArray(res.data) ? res.data : []);
+      setToday(startOfDay(new Date()));
     } catch (error) {
       console.error('Fetch events error:', error);
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  };
-
-  useEffect(() => {
-    if (token) fetchEvents();
   }, [token]);
 
-  const resetForm = () => {
-    setTitle('');
-    setDescription('');
-    setLocation('');
-    setAsset(null);
-    setStartDateValue(new Date());
-    setStartTimeValue(new Date());
-    setEndDateValue(new Date());
-    setEndTimeValue(new Date());
-    setEditingEventId(null);
-  };
-
-  const openCreateEvent = () => {
-    resetForm();
-    setShowCreateModal(true);
-  };
-
-  const openEditEvent = (event: EventItem) => {
-    setTitle(event.title || '');
-    setDescription(event.description || '');
-    setLocation(event.location || '');
-    setStartDateValue(parseWallClock(event.startDate) ?? new Date());
-    setEndDateValue(parseWallClock(event.endDate) ?? new Date());
-    setStartTimeValue(parseWallClock(event.startTime) ?? new Date());
-    setEndTimeValue(parseWallClock(event.endTime) ?? new Date());
-    setAsset(null);
-    setEditingEventId(event.id);
-    setShowCreateModal(true);
-  };
+  useEffect(() => {
+    if (token) {
+      setLoading(true);
+      fetchEvents();
+    }
+  }, [token, fetchEvents]);
 
   const deleteEvent = async (eventId: string) => {
     if (!token) return;
@@ -233,6 +103,7 @@ export default function EventsScreen() {
       await axios.delete(`${API_URL}/events/${eventId}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
+      setDetail(null);
       fetchEvents();
     } catch (error: any) {
       Alert.alert('Delete Event', error?.response?.data?.message || 'Unable to delete event.');
@@ -241,7 +112,14 @@ export default function EventsScreen() {
 
   const openEventOptions = (event: EventItem) => {
     Alert.alert('Event options', 'Choose an action', [
-      { text: 'Edit Event', onPress: () => openEditEvent(event) },
+      {
+        text: 'Edit Event',
+        onPress: () => {
+          // One sheet has to finish closing before the next can open.
+          setDetail(null);
+          setTimeout(() => setForm({ visible: true, event, day: null }), 450);
+        },
+      },
       {
         text: 'Delete Event',
         style: 'destructive',
@@ -253,71 +131,6 @@ export default function EventsScreen() {
       },
       { text: 'Cancel', style: 'cancel' },
     ]);
-  };
-
-  const createEvent = async () => {
-    if (!title.trim()) {
-      Alert.alert('Missing Title', 'Please enter an event title.');
-      return;
-    }
-    if (!token) {
-      Alert.alert('Unauthorized', 'Please log in again.');
-      return;
-    }
-
-    const appId = await AsyncStorage.getItem('appId');
-    if (!appId) {
-      Alert.alert('Missing App', 'No church app selected.');
-      return;
-    }
-
-    setIsCreating(true);
-    try {
-      const uploaded = await uploadImageIfNeeded();
-      const payload = {
-        title: title.trim(),
-        description: description.trim(),
-        appId,
-        startDate: startDateValue ? formatDateForApi(startDateValue) : null,
-        startTime: startTimeValue ? formatTimeForApi(startTimeValue) : null,
-        endDate: endDateValue ? formatDateForApi(endDateValue) : null,
-        endTime: endTimeValue ? formatTimeForApi(endTimeValue) : null,
-        location: location.trim() || null,
-        regularity: 0,
-        dayOfTheWeek: 0,
-        regularityDescription: null,
-        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-        media: uploaded,
-      };
-
-      if (editingEventId) {
-        await axios.patch(`${API_URL}/events/${editingEventId}`, payload, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-      } else {
-        await axios.post(`${API_URL}/events`, payload, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-      }
-      setShowCreateModal(false);
-      resetForm();
-      fetchEvents();
-    } catch (error: any) {
-      const message = error?.response?.data?.message || 'Failed to create event.';
-      Alert.alert('Create Event', message);
-    } finally {
-      setIsCreating(false);
-    }
-  };
-
-  const countRsvps = (rsvps?: EventRsvp[]) => {
-    const counts = { YES: 0, NO: 0, MAYBE: 0 };
-    (rsvps || []).forEach((r) => {
-      if (r.response === 'YES') counts.YES += 1;
-      else if (r.response === 'NO') counts.NO += 1;
-      else if (r.response === 'MAYBE') counts.MAYBE += 1;
-    });
-    return counts;
   };
 
   const submitRsvp = async (eventId: string, response: RSVPResponse) => {
@@ -352,394 +165,351 @@ export default function EventsScreen() {
     }
   };
 
-  const renderEvent = ({ item }: { item: EventItem }) => {
-    const myRsvp = item.rsvps?.find((r) => r.church_userId === user?.id)?.response;
-    const rsvpCounts = countRsvps(item.rsvps);
-    const isSubmittingRsvp = !!rsvpLoadingByEvent[item.id];
-    return (
-    <View style={styles.eventCard}>
-      <View style={styles.eventCardTopRow}>
-        <View />
-        {user?.is_admin ? (
-          <TouchableOpacity style={styles.eventOptionsBtn} onPress={() => openEventOptions(item)}>
-            <MaterialIcons name="more-vert" size={20} color="#374151" />
-          </TouchableOpacity>
-        ) : null}
-      </View>
-      <Image source={{ uri: item.mediaUrl || DEFAULT_EVENT_THUMBNAIL }} style={styles.eventImage} />
-      <Text style={styles.eventTitle}>{item.title}</Text>
-      {!!item.description && (
-        <Text style={styles.eventDescription}>
-          {item.description.split(URL_REGEX).map((part, idx) => {
-            const isUrl = /^https?:\/\//i.test(part);
-            if (!isUrl) return <Text key={`txt-${idx}`}>{part}</Text>;
-            return (
-              <Text
-                key={`url-${idx}`}
-                style={styles.eventLink}
-                onPress={() => Linking.openURL(part)}
-              >
-                {part}
-              </Text>
-            );
-          })}
-        </Text>
-      )}
-      {!!item.startDate && (
-        <Text style={styles.eventMeta}>Start Date: {parseWallClock(item.startDate)?.toLocaleDateString()}</Text>
-      )}
-      {!!item.startTime && (
-        <Text style={styles.eventMeta}>
-          Start Time:{' '}
-          {parseWallClock(item.startTime)?.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
-        </Text>
-      )}
-      {!!item.endDate && (
-        <Text style={styles.eventMeta}>End Date: {parseWallClock(item.endDate)?.toLocaleDateString()}</Text>
-      )}
-      {!!item.endTime && (
-        <Text style={styles.eventMeta}>
-          End Time:{' '}
-          {parseWallClock(item.endTime)?.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
-        </Text>
-      )}
-      {!!item.location && <Text style={styles.eventMeta}>Location: {item.location}</Text>}
-      <View style={styles.rsvpSection}>
-        <Text style={styles.rsvpLabel}>Will you attend?</Text>
-        <View style={styles.rsvpBtnRow}>
-          {(['YES', 'NO', 'MAYBE'] as RSVPResponse[]).map((choice) => (
-            <TouchableOpacity
-              key={choice}
-              style={[styles.rsvpBtn, myRsvp === choice && styles.rsvpBtnActive]}
-              onPress={() => submitRsvp(item.id, choice)}
-              disabled={isSubmittingRsvp}
-            >
-              <Text style={[styles.rsvpBtnText, myRsvp === choice && styles.rsvpBtnTextActive]}>
-                {choice}
-              </Text>
-            </TouchableOpacity>
-          ))}
+  const upcoming = useMemo(() => buildUpcoming(events, today), [events, today]);
+  const monthEvents = useMemo(() => buildMonth(events, month.year, month.month), [events, month]);
+  const cells = useMemo(() => monthGrid(month.year, month.month), [month]);
+  const selectedEvents = monthEvents[dayKey(selectedDay)] || [];
+  const detailEvent = detail ? events.find((event) => event.id === detail.id) || null : null;
+
+  const shiftMonth = (by: number) => {
+    const next = new Date(month.year, month.month + by, 1);
+    setMonth({ year: next.getFullYear(), month: next.getMonth() });
+    // Land on today when its month comes into view, otherwise on the 1st.
+    const showsToday = next.getFullYear() === today.getFullYear() && next.getMonth() === today.getMonth();
+    setSelectedDay(showsToday ? today : next);
+  };
+
+  const goToToday = () => {
+    setMonth({ year: today.getFullYear(), month: today.getMonth() });
+    setSelectedDay(today);
+  };
+
+  const openAdd = () =>
+    setForm({ visible: true, event: null, day: view === 'calendar' ? selectedDay : null });
+
+  const renderRow = (row: EventRow, index: number) => (
+    <React.Fragment key={`${row.event.id}-${row.day ? dayKey(row.day) : 'none'}`}>
+      {index > 0 ? <View style={[shapes.divider, styles.rowDivider]} /> : null}
+      <TouchableOpacity
+        style={styles.row}
+        activeOpacity={0.7}
+        onPress={() => setDetail({ id: row.event.id, day: row.day })}
+        accessibilityRole="button"
+        accessibilityLabel={`${row.event.title}. ${rowMeta(row.event, row.day, today)}`}
+      >
+        <DateTile day={row.day} isToday={!!row.day && sameDay(row.day, today)} />
+        <View style={styles.rowText}>
+          <Text style={text.headline} numberOfLines={1}>
+            {row.event.title}
+          </Text>
+          <Text style={text.secondary} numberOfLines={1}>
+            {rowMeta(row.event, row.day, today) || 'No date yet'}
+          </Text>
         </View>
-        <Text style={styles.rsvpCounts}>
-          Yes: {rsvpCounts.YES}  No: {rsvpCounts.NO}  Maybe: {rsvpCounts.MAYBE}
-        </Text>
-      </View>
-    </View>
+        <RowTrailing event={row.event} userId={user?.id} />
+      </TouchableOpacity>
+    </React.Fragment>
   );
-};
+
+  const renderSection = (title: string, rows: EventRow[]) =>
+    rows.length === 0 ? null : (
+      <View key={title}>
+        <SectionTitle>{title}</SectionTitle>
+        <View style={shapes.group}>{rows.map(renderRow)}</View>
+      </View>
+    );
+
+  const nothingUpcoming =
+    upcoming.today.length + upcoming.week.length + upcoming.later.length + upcoming.undated.length === 0;
 
   return (
-    <View style={styles.container}>
-      <Navbar />
-      <View style={styles.headerRow}>
-        <Text style={styles.headerTitle}>Events</Text>
-        {user?.is_admin ? (
-          <TouchableOpacity style={styles.addBtn} onPress={openCreateEvent}>
-            <MaterialIcons name="add" size={20} color="#fff" />
-            <Text style={styles.addBtnText}>Add Event</Text>
-          </TouchableOpacity>
-        ) : null}
-      </View>
+    <View style={shapes.page}>
+      <Navbar title="Events" onAdd={isAdmin ? openAdd : undefined} addLabel="Add event" />
+
+      <SegmentedControl<ViewMode>
+        style={styles.switcher}
+        value={view}
+        onChange={setView}
+        options={[
+          { value: 'upcoming', label: 'Upcoming' },
+          { value: 'calendar', label: 'Calendar' },
+        ]}
+      />
 
       {loading && !refreshing ? (
-        <View style={styles.loading}>
-          <ActivityIndicator size="large" color="#007AFF" />
-        </View>
+        <Loading />
       ) : (
-        <FlatList
-          data={events}
-          keyExtractor={(item) => item.id}
-          renderItem={renderEvent}
-          contentContainerStyle={styles.listContent}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); fetchEvents(); }} />}
-          ListEmptyComponent={<Text style={styles.empty}>No events added yet.</Text>}
-        />
+        <ScrollView
+          contentContainerStyle={styles.content}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              tintColor={colors.inkMuted}
+              onRefresh={() => {
+                setRefreshing(true);
+                fetchEvents();
+              }}
+            />
+          }
+        >
+          {view === 'upcoming' ? (
+            events.length === 0 ? (
+              <EmptyState
+                icon="calendar-outline"
+                title="No events yet"
+                hint={isAdmin ? 'Tap the plus button to add the first one.' : 'Check back soon.'}
+              />
+            ) : nothingUpcoming ? (
+              <EmptyState
+                icon="calendar-outline"
+                title="Nothing coming up"
+                hint="Earlier events are in the Calendar."
+              />
+            ) : (
+              <>
+                {renderSection('Today', upcoming.today)}
+                {renderSection('This week', upcoming.week)}
+                {renderSection('Later', upcoming.later)}
+                {renderSection('No date yet', upcoming.undated)}
+              </>
+            )
+          ) : (
+            <>
+              <View style={[shapes.card, styles.calendar]}>
+                <View style={styles.monthBar}>
+                  <TouchableOpacity
+                    style={styles.monthTitleBtn}
+                    onPress={goToToday}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${MONTHS[month.month]} ${month.year}. Go to today`}
+                  >
+                    <Text style={text.section}>
+                      {MONTHS[month.month]} {month.year}
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.monthArrow}
+                    onPress={() => shiftMonth(-1)}
+                    accessibilityRole="button"
+                    accessibilityLabel="Previous month"
+                  >
+                    <Ionicons name="chevron-back" size={22} color={colors.azure} />
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.monthArrow}
+                    onPress={() => shiftMonth(1)}
+                    accessibilityRole="button"
+                    accessibilityLabel="Next month"
+                  >
+                    <Ionicons name="chevron-forward" size={22} color={colors.azure} />
+                  </TouchableOpacity>
+                </View>
+
+                <View style={styles.weekRow}>
+                  {WEEKDAY_LETTERS.map((letter, index) => (
+                    <Text key={`${letter}-${index}`} style={styles.weekLetter}>
+                      {letter}
+                    </Text>
+                  ))}
+                </View>
+
+                <View style={styles.grid}>
+                  {cells.map((cell, index) => {
+                    if (!cell) return <View key={`blank-${index}`} style={styles.cell} />;
+                    const count = (monthEvents[dayKey(cell)] || []).length;
+                    const isToday = sameDay(cell, today);
+                    const isSelected = sameDay(cell, selectedDay);
+                    return (
+                      <Pressable
+                        key={dayKey(cell)}
+                        style={styles.cell}
+                        onPress={() => setSelectedDay(cell)}
+                        accessibilityRole="button"
+                        accessibilityState={{ selected: isSelected }}
+                        accessibilityLabel={`${formatDayLong(cell, today)}, ${
+                          count === 0 ? 'no events' : count === 1 ? '1 event' : `${count} events`
+                        }`}
+                      >
+                        <View
+                          style={[
+                            styles.dayCircle,
+                            isSelected && !isToday ? styles.daySelected : null,
+                            isToday ? styles.dayToday : null,
+                          ]}
+                        >
+                          <Text
+                            style={[
+                              styles.dayNumber,
+                              isSelected && !isToday ? styles.dayNumberSelected : null,
+                              isToday ? styles.dayNumberToday : null,
+                            ]}
+                          >
+                            {cell.getDate()}
+                          </Text>
+                        </View>
+                        <View style={styles.dots}>
+                          {count > 0 ? <View style={styles.dot} /> : null}
+                          {count > 1 ? <View style={styles.dot} /> : null}
+                        </View>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              </View>
+
+              <Text style={[text.headline, styles.dayTitle]} accessibilityRole="header">
+                {sameDay(selectedDay, today) ? 'Today, ' : ''}
+                {formatDayLong(selectedDay, today)}
+              </Text>
+
+              {selectedEvents.length === 0 ? (
+                <View style={[shapes.group, styles.nothing]}>
+                  <Text style={styles.nothingText}>Nothing planned for this day.</Text>
+                </View>
+              ) : (
+                <View style={shapes.group}>
+                  {selectedEvents.map((event, index) => (
+                    <React.Fragment key={event.id}>
+                      {index > 0 ? <View style={[shapes.divider, styles.dayRowDivider]} /> : null}
+                      <TouchableOpacity
+                        style={styles.dayRow}
+                        activeOpacity={0.7}
+                        onPress={() => setDetail({ id: event.id, day: selectedDay })}
+                        accessibilityRole="button"
+                        accessibilityLabel={`${event.title}. ${formatStartTime(event) || 'All day'}`}
+                      >
+                        <Text style={styles.dayRowTime}>{formatStartTime(event) || 'All day'}</Text>
+                        <View style={styles.rowText}>
+                          <Text style={text.headline} numberOfLines={1}>
+                            {event.title}
+                          </Text>
+                          {dayRowMeta(event) ? (
+                            <Text style={text.secondary} numberOfLines={1}>
+                              {dayRowMeta(event)}
+                            </Text>
+                          ) : null}
+                        </View>
+                        <Ionicons name="chevron-forward" size={18} color={colors.inkFaint} />
+                      </TouchableOpacity>
+                    </React.Fragment>
+                  ))}
+                </View>
+              )}
+            </>
+          )}
+        </ScrollView>
       )}
 
-      <Modal visible={showCreateModal} animationType="slide">
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.modalContainer}>
-          <View style={styles.modalHeader}>
-            <TouchableOpacity onPress={() => setShowCreateModal(false)}>
-              <MaterialIcons name="close" size={28} color="#333" />
-            </TouchableOpacity>
-            <Text style={styles.modalTitle}>{editingEventId ? 'Edit Event' : 'Create Event'}</Text>
-            <View style={{ width: 28 }} />
-          </View>
+      <EventDetailSheet
+        event={detailEvent}
+        day={detail?.day || null}
+        userId={user?.id}
+        isAdmin={isAdmin}
+        rsvpLoading={!!(detailEvent && rsvpLoadingByEvent[detailEvent.id])}
+        onRsvp={submitRsvp}
+        onOptions={openEventOptions}
+        onClose={() => setDetail(null)}
+      />
 
-          <ScrollView
-            contentContainerStyle={styles.modalBody}
-            keyboardShouldPersistTaps="handled"
-            keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
-          >
-            <TextInput style={styles.input} placeholder="Title *" value={title} onChangeText={setTitle} />
-            <TextInput
-              style={[styles.input, styles.multiline]}
-              placeholder="Description"
-              value={description}
-              onChangeText={setDescription}
-              multiline
-            />
-
-            <TouchableOpacity style={styles.pickerField} onPress={() => setShowStartDatePicker(true)}>
-              <Text style={styles.pickerLabel}>Start Date</Text>
-              <Text style={styles.pickerValue}>
-                {startDateValue ? startDateValue.toLocaleDateString() : 'Select start date'}
-              </Text>
-            </TouchableOpacity>
-            {showStartDatePicker && (
-              <View style={styles.pickerContainer}>
-                <DateTimePicker
-                  value={startDateValue || new Date()}
-                  mode="date"
-                  display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                  onChange={(_, selectedDate) => {
-                    if (Platform.OS !== 'ios') setShowStartDatePicker(false);
-                    if (selectedDate) setStartDateValue(selectedDate);
-                  }}
-                />
-                {Platform.OS === 'ios' ? (
-                  <TouchableOpacity style={styles.pickerDoneBtn} onPress={() => setShowStartDatePicker(false)}>
-                    <Text style={styles.pickerDoneText}>Done</Text>
-                  </TouchableOpacity>
-                ) : null}
-              </View>
-            )}
-
-            <TouchableOpacity style={styles.pickerField} onPress={() => setShowStartTimePicker(true)}>
-              <Text style={styles.pickerLabel}>Start Time</Text>
-              <Text style={styles.pickerValue}>
-                {startTimeValue ? startTimeValue.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : 'Select start time'}
-              </Text>
-            </TouchableOpacity>
-            {showStartTimePicker && (
-              <View style={styles.pickerContainer}>
-                <DateTimePicker
-                  value={startTimeValue || new Date()}
-                  mode="time"
-                  display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                  onChange={(_, selectedDate) => {
-                    if (Platform.OS !== 'ios') setShowStartTimePicker(false);
-                    if (selectedDate) setStartTimeValue(selectedDate);
-                  }}
-                />
-                {Platform.OS === 'ios' ? (
-                  <TouchableOpacity style={styles.pickerDoneBtn} onPress={() => setShowStartTimePicker(false)}>
-                    <Text style={styles.pickerDoneText}>Done</Text>
-                  </TouchableOpacity>
-                ) : null}
-              </View>
-            )}
-
-            <TouchableOpacity style={styles.pickerField} onPress={() => setShowEndDatePicker(true)}>
-              <Text style={styles.pickerLabel}>End Date</Text>
-              <Text style={styles.pickerValue}>
-                {endDateValue ? endDateValue.toLocaleDateString() : 'Select end date'}
-              </Text>
-            </TouchableOpacity>
-            {showEndDatePicker && (
-              <View style={styles.pickerContainer}>
-                <DateTimePicker
-                  value={endDateValue || new Date()}
-                  mode="date"
-                  display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                  onChange={(_, selectedDate) => {
-                    if (Platform.OS !== 'ios') setShowEndDatePicker(false);
-                    if (selectedDate) setEndDateValue(selectedDate);
-                  }}
-                />
-                {Platform.OS === 'ios' ? (
-                  <TouchableOpacity style={styles.pickerDoneBtn} onPress={() => setShowEndDatePicker(false)}>
-                    <Text style={styles.pickerDoneText}>Done</Text>
-                  </TouchableOpacity>
-                ) : null}
-              </View>
-            )}
-
-            <TouchableOpacity style={styles.pickerField} onPress={() => setShowEndTimePicker(true)}>
-              <Text style={styles.pickerLabel}>End Time</Text>
-              <Text style={styles.pickerValue}>
-                {endTimeValue ? endTimeValue.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : 'Select end time'}
-              </Text>
-            </TouchableOpacity>
-            {showEndTimePicker && (
-              <View style={styles.pickerContainer}>
-                <DateTimePicker
-                  value={endTimeValue || new Date()}
-                  mode="time"
-                  display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                  onChange={(_, selectedDate) => {
-                    if (Platform.OS !== 'ios') setShowEndTimePicker(false);
-                    if (selectedDate) setEndTimeValue(selectedDate);
-                  }}
-                />
-                {Platform.OS === 'ios' ? (
-                  <TouchableOpacity style={styles.pickerDoneBtn} onPress={() => setShowEndTimePicker(false)}>
-                    <Text style={styles.pickerDoneText}>Done</Text>
-                  </TouchableOpacity>
-                ) : null}
-              </View>
-            )}
-
-            <TextInput style={styles.input} placeholder="Location" value={location} onChangeText={setLocation} />
-
-            <TouchableOpacity style={styles.imageAttachBtn} onPress={pickEventImage}>
-              <MaterialIcons name="image" size={20} color="#007AFF" />
-              <Text style={styles.imageAttachText}>Attach Event Image</Text>
-            </TouchableOpacity>
-
-            {asset ? (
-              <View style={styles.previewCard}>
-                <Image source={{ uri: asset.uri }} style={styles.previewImage} />
-                <TouchableOpacity onPress={() => setAsset(null)} style={styles.removeAttachmentBtn}>
-                  <Text style={styles.removeAttachmentText}>Remove Image</Text>
-                </TouchableOpacity>
-              </View>
-            ) : null}
-
-            <TouchableOpacity style={styles.submitBtn} onPress={createEvent} disabled={isCreating}>
-              {isCreating ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <Text style={styles.submitBtnText}>{editingEventId ? 'Save Changes' : 'Create Event'}</Text>
-              )}
-            </TouchableOpacity>
-          </ScrollView>
-        </KeyboardAvoidingView>
-      </Modal>
+      <EventFormSheet
+        visible={form.visible}
+        event={form.event}
+        defaultDay={form.day}
+        token={token}
+        userId={user?.id}
+        onClose={() => setForm((prev) => ({ ...prev, visible: false }))}
+        onSaved={() => {
+          setForm((prev) => ({ ...prev, visible: false }));
+          fetchEvents();
+        }}
+      />
     </View>
   );
 }
 
+/** "Room 204 · Weekly" under an event in the calendar's day list. */
+function dayRowMeta(event: EventItem): string {
+  return [event.location, repeatLabelShort(event)].filter(Boolean).join(' · ');
+}
+
+/** The month and day in a small rounded square. Today's is filled blue. */
+function DateTile({ day, isToday }: { day: Date | null; isToday: boolean }) {
+  if (!day) {
+    return (
+      <View style={styles.tile}>
+        <Ionicons name="help" size={20} color={colors.inkMuted} />
+      </View>
+    );
+  }
+  return (
+    <View style={[styles.tile, isToday ? styles.tileToday : null]}>
+      <Text style={[styles.tileMonth, isToday ? styles.tileOnToday : null]}>
+        {MONTHS_SHORT[day.getMonth()].toUpperCase()}
+      </Text>
+      <Text style={[styles.tileDay, isToday ? styles.tileOnToday : null]}>{day.getDate()}</Text>
+    </View>
+  );
+}
+
+/** The right-hand side of a row: how often it repeats, or this person's answer. */
+function RowTrailing({ event, userId }: { event: EventItem; userId?: string | null }) {
+  if (isRepeating(event)) {
+    return (
+      <View style={styles.repeat}>
+        <Ionicons name="repeat" size={14} color={colors.inkMuted} />
+        <Text style={styles.repeatText}>{repeatLabelShort(event)}</Text>
+      </View>
+    );
+  }
+  const mine = myRsvp(event, userId);
+  if (mine === 'YES') return <Chip label={rsvpLabel(mine)} kind="success" icon="checkmark" />;
+  if (mine) return <Chip label={rsvpLabel(mine)} />;
+  return <Chip label="RSVP" kind="accent" />;
+}
+
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#fff' },
-  loading: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  headerRow: {
-    paddingHorizontal: 16,
-    paddingTop: 14,
-    paddingBottom: 10,
-    flexDirection: 'row',
+  switcher: { marginHorizontal: GUTTER, marginTop: 4 },
+  content: { paddingHorizontal: GUTTER, paddingBottom: 32 },
+
+  row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10, paddingHorizontal: 12, minHeight: 68 },
+  rowDivider: { marginLeft: 70 },
+  rowText: { flex: 1, minWidth: 0, gap: 2 },
+  tile: {
+    width: 46,
+    height: 48,
+    borderRadius: 12,
+    backgroundColor: colors.page,
     alignItems: 'center',
-    justifyContent: 'space-between',
+    justifyContent: 'center',
   },
-  headerTitle: { fontSize: 24, fontWeight: '700', color: '#222' },
-  addBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: '#007AFF',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 20,
-  },
-  addBtnText: { color: '#fff', fontWeight: '700' },
-  listContent: { padding: 16, gap: 12 },
-  eventCard: {
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
-    borderRadius: 10,
-    padding: 14,
-    backgroundColor: '#fff',
-    position: 'relative',
-    paddingTop: 10,
-  },
-  eventCardTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
-  eventOptionsBtn: { padding: 4 },
-  eventImage: {
-    width: '100%',
-    height: 190,
-    borderRadius: 10,
-    marginBottom: 10,
-  },
-  eventTitle: { fontSize: 17, fontWeight: '700', color: '#111827' },
-  eventDescription: { marginTop: 6, color: '#374151', lineHeight: 20 },
-  eventLink: { color: '#2563eb', textDecorationLine: 'underline' },
-  eventMeta: { marginTop: 4, color: '#4b5563', fontSize: 13 },
-  rsvpSection: { marginTop: 10, borderTopWidth: 1, borderTopColor: '#eef2f7', paddingTop: 10 },
-  rsvpLabel: { fontSize: 13, color: '#374151', marginBottom: 8, fontWeight: '600' },
-  rsvpBtnRow: { flexDirection: 'row', gap: 8 },
-  rsvpBtn: {
-    borderWidth: 1,
-    borderColor: '#cbd5e1',
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    backgroundColor: '#fff',
-  },
-  rsvpBtnActive: { backgroundColor: '#dbeafe', borderColor: '#60a5fa' },
-  rsvpBtnText: { fontSize: 12, color: '#374151', fontWeight: '600' },
-  rsvpBtnTextActive: { color: '#1d4ed8' },
-  rsvpCounts: { marginTop: 8, fontSize: 12, color: '#6b7280' },
-  empty: { textAlign: 'center', color: '#9ca3af', marginTop: 30 },
-  modalContainer: { flex: 1, backgroundColor: '#fff' },
-  modalHeader: {
-    paddingHorizontal: 16,
-    paddingTop: 60,
-    paddingBottom: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  modalTitle: { fontSize: 18, fontWeight: '700', color: '#111827' },
-  modalBody: { padding: 16, gap: 12, paddingBottom: Platform.OS === 'ios' ? 260 : 180 },
-  input: {
-    borderWidth: 1,
-    borderColor: '#d1d5db',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    fontSize: 15,
-  },
-  multiline: { minHeight: 100, textAlignVertical: 'top' },
-  pickerField: {
-    borderWidth: 1,
-    borderColor: '#d1d5db',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    backgroundColor: '#fff',
-  },
-  pickerContainer: {
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
-    borderRadius: 10,
-    overflow: 'hidden',
-    backgroundColor: '#fff',
-  },
-  pickerDoneBtn: {
-    borderTopWidth: 1,
-    borderTopColor: '#e5e7eb',
-    alignItems: 'center',
-    paddingVertical: 10,
-    backgroundColor: '#f9fafb',
-  },
-  pickerDoneText: { color: '#2563eb', fontWeight: '700', fontSize: 15 },
-  pickerLabel: { fontSize: 12, color: '#6b7280', marginBottom: 4 },
-  pickerValue: { fontSize: 15, color: '#111827' },
-  imageAttachBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    borderWidth: 1,
-    borderColor: '#dbeafe',
-    backgroundColor: '#eff6ff',
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 9,
-    alignSelf: 'flex-start',
-  },
-  imageAttachText: { color: '#007AFF', fontWeight: '600' },
-  previewCard: { borderWidth: 1, borderColor: '#e5e7eb', borderRadius: 10, padding: 10, backgroundColor: '#fafafa' },
-  previewImage: { width: '100%', height: 180, borderRadius: 10 },
-  removeAttachmentBtn: { marginTop: 8 },
-  removeAttachmentText: { color: '#ef4444', fontWeight: '600' },
-  submitBtn: {
-    marginTop: 8,
-    backgroundColor: '#007AFF',
-    borderRadius: 8,
-    alignItems: 'center',
-    paddingVertical: 14,
-  },
-  submitBtnText: { color: '#fff', fontWeight: '700', fontSize: 16 },
+  tileToday: { backgroundColor: colors.azure },
+  tileMonth: { fontSize: 10.5, fontWeight: '700', letterSpacing: 0.5, color: colors.azureText },
+  tileDay: { fontSize: 20, lineHeight: 23, fontWeight: '700', color: colors.ink },
+  tileOnToday: { color: colors.white },
+  repeat: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  repeatText: { fontSize: 12, fontWeight: '500', color: colors.inkMuted },
+
+  calendar: { marginTop: 14, paddingTop: 4, paddingBottom: 10, paddingHorizontal: 8 },
+  monthBar: { flexDirection: 'row', alignItems: 'center' },
+  monthTitleBtn: { flex: 1, minHeight: TAP, justifyContent: 'center', paddingLeft: 10 },
+  monthArrow: { width: TAP, height: TAP, alignItems: 'center', justifyContent: 'center' },
+  weekRow: { flexDirection: 'row', paddingTop: 2, paddingBottom: 4 },
+  weekLetter: { flex: 1, textAlign: 'center', fontSize: 12, fontWeight: '600', color: colors.inkMuted },
+  grid: { flexDirection: 'row', flexWrap: 'wrap' },
+  cell: { width: `${100 / 7}%`, height: 50, alignItems: 'center', gap: 3 },
+  dayCircle: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
+  daySelected: { backgroundColor: colors.azureTint },
+  dayToday: { backgroundColor: colors.azure },
+  dayNumber: { fontSize: 17, color: colors.ink },
+  dayNumberSelected: { fontWeight: '700', color: colors.azureTintText },
+  dayNumberToday: { fontWeight: '700', color: colors.white },
+  dots: { flexDirection: 'row', gap: 3, height: 5 },
+  dot: { width: 5, height: 5, borderRadius: 2.5, backgroundColor: colors.azure },
+
+  dayTitle: { marginTop: 18, marginBottom: 8 },
+  dayRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, paddingLeft: 14, paddingRight: 12, minHeight: 60 },
+  dayRowDivider: { marginLeft: 14 },
+  dayRowTime: { width: 72, fontSize: 14, fontWeight: '600', color: colors.azureText },
+  nothing: { paddingVertical: 20, paddingHorizontal: 16 },
+  nothingText: { ...text.secondary, fontSize: 15, textAlign: 'center' },
 });

@@ -1,9 +1,19 @@
 import React, { useEffect } from 'react';
+import { StyleSheet } from 'react-native';
 import { Redirect, Tabs } from 'expo-router';
 import { useRouter } from 'expo-router';
-import { Ionicons, MaterialIcons } from '@expo/vector-icons';
+import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from '../../context/AuthContext';
+import { colors } from '../../lib/theme';
+
+type IoniconName = React.ComponentProps<typeof Ionicons>['name'];
+
+/** The filled icon marks the tab you are on; the outline is every other tab. */
+const tabIcon =
+  (on: IoniconName, off: IoniconName) =>
+  ({ color, focused }: { color: string; focused: boolean }) =>
+    <Ionicons name={focused ? on : off} size={25} color={color} />;
 
 export default function TabLayout() {
   const router = useRouter();
@@ -34,19 +44,31 @@ export default function TabLayout() {
   const hiddenUnless = (enabled: boolean) => (enabled ? {} : { href: null });
 
   return (
-    <Tabs screenOptions={{ tabBarActiveTintColor: '#007AFF', headerShown: false }}>
+    <Tabs
+      // Back from a screen opened over the tabs (Notifications) returns to the
+      // tab the person was on, not always to Home.
+      backBehavior="history"
+      screenOptions={{
+        headerShown: false,
+        tabBarActiveTintColor: colors.azure,
+        tabBarInactiveTintColor: colors.inkMuted,
+        tabBarStyle: styles.tabBar,
+        tabBarLabelStyle: styles.tabLabel,
+        sceneStyle: styles.scene,
+      }}
+    >
       <Tabs.Screen
         name="index"
         options={{
           title: 'Home',
-          tabBarIcon: ({ color }) => <Ionicons name="home" size={26} color={color} />,
+          tabBarIcon: tabIcon('home', 'home-outline'),
         }}
       />
       <Tabs.Screen
         name="groups"
         options={{
           title: 'Groups',
-          tabBarIcon: ({ color }) => <MaterialIcons name="groups" size={28} color={color} />,
+          tabBarIcon: tabIcon('people', 'people-outline'),
           ...hiddenUnless(features.groups),
         }}
       />
@@ -54,7 +76,7 @@ export default function TabLayout() {
         name="videos"
         options={{
           title: 'Videos',
-          tabBarIcon: ({ color }) => <MaterialIcons name="video-library" size={28} color={color} />,
+          tabBarIcon: tabIcon('play-circle', 'play-circle-outline'),
           ...hiddenUnless(features.videos),
         }}
       />
@@ -62,7 +84,7 @@ export default function TabLayout() {
         name="events"
         options={{
           title: 'Events',
-          tabBarIcon: ({ color }) => <MaterialIcons name="event" size={28} color={color} />,
+          tabBarIcon: tabIcon('calendar', 'calendar-outline'),
           ...hiddenUnless(features.events),
         }}
       />
@@ -71,16 +93,28 @@ export default function TabLayout() {
         options={{
           title: 'Notifications',
           href: null,
-          tabBarIcon: ({ color }) => <MaterialIcons name="notifications" size={28} color={color} />,
+          tabBarIcon: tabIcon('notifications', 'notifications-outline'),
         }}
       />
       <Tabs.Screen
         name="give"
         options={{
           title: 'Give',
-          tabBarIcon: ({ color }) => <MaterialIcons name="volunteer-activism" size={28} color={color} />,
+          tabBarIcon: tabIcon('heart', 'heart-outline'),
         }}
       />
     </Tabs>
   );
 }
+
+const styles = StyleSheet.create({
+  tabBar: {
+    backgroundColor: colors.card,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: 'rgba(0, 0, 0, 0.14)',
+    elevation: 0,
+    shadowOpacity: 0,
+  },
+  tabLabel: { fontSize: 10.5, fontWeight: '600' },
+  scene: { backgroundColor: colors.page },
+});

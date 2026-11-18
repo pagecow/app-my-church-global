@@ -1,22 +1,24 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  StyleSheet, 
-  View, 
-  Text, 
-  TextInput, 
-  TouchableOpacity, 
-  ActivityIndicator, 
-  KeyboardAvoidingView, 
+import {
+  StyleSheet,
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  KeyboardAvoidingView,
   Platform,
   Image,
   Alert,
   ScrollView,
   useWindowDimensions,
 } from 'react-native';
-import { MaterialIcons } from '@expo/vector-icons';
 import { useAuth } from '../context/AuthContext';
 import { useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Button, StackHeader, Tile } from '../components/ui';
+import { colors, GUTTER, shapes, TAP, text } from '../lib/theme';
+
+const LOGO_SIZE = 88;
 
 export default function LoginScreen() {
   const { height } = useWindowDimensions();
@@ -37,7 +39,7 @@ export default function LoginScreen() {
     const storedAppId = await AsyncStorage.getItem('appId');
     const storedName = await AsyncStorage.getItem('churchName');
     const storedLogo = await AsyncStorage.getItem('churchLogo');
-    
+
     if (storedAppId) setAppId(storedAppId);
     if (storedName) setChurchName(storedName);
     if (storedLogo) setChurchLogo(storedLogo);
@@ -73,80 +75,62 @@ export default function LoginScreen() {
   };
 
   return (
-    <KeyboardAvoidingView 
+    <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      style={styles.container}
+      style={shapes.page}
     >
-      <TouchableOpacity 
-        style={styles.backButton} 
-        onPress={() => router.replace('/find-church')}
-      >
-        <MaterialIcons name="arrow-back" size={28} color="#333" />
-      </TouchableOpacity>
+      {/* Back leads to the church search: this is how someone chooses a different church. */}
+      <StackHeader onBack={() => router.replace('/find-church')} />
 
       <ScrollView
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
         contentContainerStyle={[styles.scrollContent, { paddingBottom: Math.max(24, height * 0.25) }]}
       >
-        <View style={styles.innerContainer}>
-          <View style={styles.logoContainer}>
-            {churchLogo ? (
-              <Image 
-                source={{ uri: churchLogo }} 
-                style={styles.logo} 
-                resizeMode="contain"
-              />
+        <View style={styles.column}>
+          <View style={styles.brand}>
+            {/* The church's own picture once it is known; the app's icon until then. */}
+            {appId ? (
+              <Tile uri={churchLogo} name={churchName} size={LOGO_SIZE} fit="contain" />
             ) : (
-              <Image 
-                source={require('../assets/icon.png')} 
-                style={styles.logo} 
-                resizeMode="contain"
-              />
+              <Image source={require('../assets/icon.png')} style={styles.appIcon} />
             )}
-            <Text style={styles.title}>{churchName}</Text>
+            <Text style={[text.title, styles.title]} accessibilityRole="header">
+              {churchName}
+            </Text>
+            <Text style={styles.subtitle}>Log in to your account.</Text>
           </View>
 
-          <View style={styles.formContainer}>
-            <Text style={styles.label}>Email</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Enter your email"
-              value={email}
-              onChangeText={setEmail}
-              autoCapitalize="none"
-              keyboardType="email-address"
-            />
+          <Text style={styles.label}>Email</Text>
+          <TextInput
+            style={shapes.input}
+            placeholder="Enter your email"
+            placeholderTextColor={colors.inkFaint}
+            value={email}
+            onChangeText={setEmail}
+            autoCapitalize="none"
+            keyboardType="email-address"
+          />
 
-            <Text style={styles.label}>Password</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Enter your password"
-              value={password}
-              onChangeText={setPassword}
-              secureTextEntry
-            />
+          <Text style={styles.label}>Password</Text>
+          <TextInput
+            style={shapes.input}
+            placeholder="Enter your password"
+            placeholderTextColor={colors.inkFaint}
+            value={password}
+            onChangeText={setPassword}
+            secureTextEntry
+          />
 
-            <TouchableOpacity 
-              style={styles.button} 
-              onPress={handleLogin}
-              disabled={isLoggingIn}
-            >
-              {isLoggingIn ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <Text style={styles.buttonText}>Login</Text>
-              )}
-            </TouchableOpacity>
+          <Button label="Login" onPress={handleLogin} loading={isLoggingIn} style={styles.submit} />
 
-            <TouchableOpacity onPress={handleForgotPassword} style={styles.forgotBelowLogin}>
-              <Text style={styles.forgotText}>Forgot Password?</Text>
-            </TouchableOpacity>
+          <TouchableOpacity onPress={handleForgotPassword} style={styles.link} accessibilityRole="button">
+            <Text style={text.link}>Forgot Password?</Text>
+          </TouchableOpacity>
 
-            <TouchableOpacity onPress={() => router.push('/signup')} style={styles.switchLink}>
-              <Text style={styles.switchText}>Don't have an account? <Text style={styles.switchBold}>Sign up</Text></Text>
-            </TouchableOpacity>
-          </View>
+          <TouchableOpacity onPress={() => router.push('/signup')} style={styles.link} accessibilityRole="button">
+            <Text style={styles.switchText}>Don't have an account? <Text style={styles.switchBold}>Sign up</Text></Text>
+          </TouchableOpacity>
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -154,85 +138,59 @@ export default function LoginScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#fff',
-  },
   scrollContent: {
     flexGrow: 1,
-    paddingTop: 90,
+    paddingHorizontal: GUTTER,
+    paddingTop: 12,
   },
-  backButton: {
-    position: 'absolute',
-    top: 55,
-    left: 20,
-    zIndex: 10,
-    padding: 10,
+  column: {
+    width: '100%',
+    maxWidth: 440,
+    alignSelf: 'center',
   },
-  innerContainer: {
-    justifyContent: 'center',
-    padding: 20,
-  },
-  logoContainer: {
+  brand: {
     alignItems: 'center',
-    marginBottom: 50,
+    marginBottom: 12,
   },
-  logo: {
-    width: 100,
-    height: 100,
-    marginBottom: 10,
+  appIcon: {
+    width: LOGO_SIZE,
+    height: LOGO_SIZE,
+    borderRadius: Math.round(LOGO_SIZE * 0.28),
   },
   title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#333',
+    marginTop: 16,
+    textAlign: 'center',
   },
-  formContainer: {
-    width: '100%',
+  subtitle: {
+    ...text.body,
+    color: colors.inkMuted,
+    textAlign: 'center',
+    marginTop: 4,
   },
   label: {
-    fontSize: 16,
-    color: '#666',
-    marginBottom: 5,
-    marginTop: 15,
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: '#ddd',
-    padding: 15,
-    borderRadius: 8,
-    fontSize: 16,
-  },
-  forgotBelowLogin: {
-    alignItems: 'center',
+    ...text.secondary,
+    fontWeight: '500',
+    color: colors.inkSoft,
     marginTop: 16,
+    marginBottom: 6,
+    marginLeft: 4,
   },
-  forgotText: {
-    color: '#007AFF',
-    fontSize: 14,
-    fontWeight: '600',
+  submit: {
+    marginTop: 28,
   },
-  button: {
-    backgroundColor: '#007AFF', 
-    padding: 15,
-    borderRadius: 8,
+  link: {
+    minHeight: TAP,
+    marginTop: 8,
     alignItems: 'center',
-    marginTop: 30,
-  },
-  buttonText: {
-    color: '#fff',
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
-  switchLink: {
-    alignItems: 'center',
-    marginTop: 10,
+    justifyContent: 'center',
   },
   switchText: {
-    color: '#666',
+    ...text.body,
+    color: colors.inkMuted,
+    textAlign: 'center',
   },
   switchBold: {
-    color: '#007AFF',
+    color: colors.azureText,
     fontWeight: '600',
   },
 });

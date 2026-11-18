@@ -1,17 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
-import {
-  ActivityIndicator,
-  Image,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../context/AuthContext';
+import { Button, Loading } from '../components/ui';
+import { colors, GUTTER, shapes, text } from '../lib/theme';
 
 const DEFAULT_MESSAGE =
   'This church group has reached its member limit. Go to AppMyChurch.com to learn more.';
@@ -73,11 +68,7 @@ export default function LockedScreen() {
   };
 
   if (isLoading) {
-    return (
-      <View style={styles.loading}>
-        <ActivityIndicator size="large" color="#007AFF" />
-      </View>
-    );
+    return <Loading />;
   }
 
   const message = lockMessage?.trim() || DEFAULT_MESSAGE;
@@ -85,106 +76,82 @@ export default function LockedScreen() {
 
   return (
     <ScrollView
-      style={styles.container}
+      style={shapes.page}
       contentContainerStyle={[
         styles.content,
         { paddingTop: insets.top + 24, paddingBottom: insets.bottom + 24 },
       ]}
     >
-      {appData?.logo_url ? (
-        <Image source={{ uri: appData.logo_url }} style={styles.logo} resizeMode="contain" />
-      ) : null}
-      {appData?.name ? <Text style={styles.title}>{appData.name}</Text> : null}
+      <View style={[shapes.card, styles.card]}>
+        <View style={styles.lockIcon}>
+          <Ionicons name="lock-closed-outline" size={28} color={colors.inkSoft} />
+        </View>
 
-      <Text style={styles.message}>{message}</Text>
+        {appData?.name ? (
+          <Text style={[text.title, styles.title]} accessibilityRole="header">
+            {appData.name}
+          </Text>
+        ) : null}
 
-      <TouchableOpacity
-        style={[styles.button, busy && styles.buttonDisabled]}
-        onPress={handleTryAgain}
-        disabled={busy}
-        accessibilityRole="button"
-      >
-        {isRetrying ? (
-          <ActivityIndicator color="#fff" />
-        ) : (
-          <Text style={styles.buttonText}>Try again</Text>
-        )}
-      </TouchableOpacity>
+        <Text style={styles.message}>{message}</Text>
 
-      <TouchableOpacity
-        style={styles.logoutButton}
-        onPress={handleLogout}
-        disabled={busy}
-        accessibilityRole="button"
-      >
-        {isLoggingOut ? (
-          <ActivityIndicator color="#ef4444" />
-        ) : (
-          <Text style={styles.logoutText}>Log out</Text>
-        )}
-      </TouchableOpacity>
+        <Button
+          label="Try again"
+          onPress={handleTryAgain}
+          loading={isRetrying}
+          disabled={busy}
+          style={styles.tryAgain}
+        />
+        <Button
+          label="Log out"
+          kind="quiet"
+          onPress={handleLogout}
+          loading={isLoggingOut}
+          disabled={busy}
+          style={styles.logout}
+        />
+      </View>
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#fff',
-  },
   content: {
     flexGrow: 1,
     justifyContent: 'center',
-    paddingHorizontal: 20,
+    paddingHorizontal: GUTTER,
   },
-  loading: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#fff',
-  },
-  logo: {
-    width: 100,
-    height: 100,
+  card: {
+    width: '100%',
+    maxWidth: 440,
     alignSelf: 'center',
-    marginBottom: 10,
+    paddingHorizontal: 20,
+    paddingTop: 28,
+    paddingBottom: 20,
+  },
+  lockIcon: {
+    alignSelf: 'center',
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: colors.fillSoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
   },
   title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#333',
     textAlign: 'center',
-    marginBottom: 24,
+    marginBottom: 8,
   },
   message: {
-    fontSize: 16,
-    lineHeight: 24,
-    color: '#666',
+    ...text.body,
+    color: colors.inkMuted,
     textAlign: 'center',
   },
-  button: {
-    backgroundColor: '#007AFF',
-    padding: 15,
-    borderRadius: 8,
-    alignItems: 'center',
-    marginTop: 30,
+  tryAgain: {
+    marginTop: 24,
   },
-  buttonDisabled: {
-    opacity: 0.7,
-  },
-  buttonText: {
-    color: '#fff',
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
-  logoutButton: {
-    padding: 15,
-    alignItems: 'center',
+  logout: {
     marginTop: 10,
-  },
-  logoutText: {
-    color: '#ef4444',
-    fontSize: 16,
-    fontWeight: '600',
   },
 });
