@@ -7,17 +7,20 @@ import { useAuth } from '../../context/AuthContext';
 
 export default function TabLayout() {
   const router = useRouter();
-  const { token, isLoading, features, locked } = useAuth();
+  const { token, isLoading, isLoggingOut, features, locked } = useAuth();
 
+  // For a session that ended by itself (expired, or no session at launch). A
+  // tap on Log out is not handled here: the screen that called `logout()` does
+  // that one navigation.
   useEffect(() => {
     const redirectIfSignedOut = async () => {
-      if (isLoading || token) return;
+      if (isLoading || token || isLoggingOut) return;
       const appId = await AsyncStorage.getItem('appId');
       router.replace(appId ? '/login' : '/find-church');
     };
 
     redirectIfSignedOut();
-  }, [isLoading, token, router]);
+  }, [isLoading, token, isLoggingOut, router]);
 
   // Signed in, but the church lets nobody in: show the locked screen instead of
   // the tabs. `/locked` sends people back here once the church is open again,

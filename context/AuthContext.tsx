@@ -60,6 +60,12 @@ interface AuthContextType {
   appData: AppData | null;
   token: string | null;
   isLoading: boolean;
+  /**
+   * True from the moment someone taps Log out until the next sign-in. The screen
+   * that called `logout()` does the one navigation away; the signed-out guards
+   * in the tabs stand aside while this is true, so they do not also navigate.
+   */
+  isLoggingOut: boolean;
   /** Which sections the church has. Each one is true unless the server said false. */
   features: ChurchFeatures;
   /** True when the signed-in user's church is locked. */
@@ -154,6 +160,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [appData, setAppData] = useState<AppData | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   // The newest token, for code that outlives a render: the foreground listener,
   // and a church refresh that is still in flight when the session ends.
@@ -307,6 +314,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await AsyncStorage.setItem('accessToken', accessToken);
       await AsyncStorage.setItem('userData', JSON.stringify(userData));
       await AsyncStorage.setItem('appId', appId);
+      setIsLoggingOut(false);
       setToken(accessToken);
       setUser(userData);
       // Fetch app data
@@ -326,6 +334,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await AsyncStorage.setItem('accessToken', accessToken);
       await AsyncStorage.setItem('userData', JSON.stringify(userData));
       await AsyncStorage.setItem('appId', data.appId);
+      setIsLoggingOut(false);
       setToken(accessToken);
       setUser(userData);
       try {
@@ -338,6 +347,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const logout = async () => {
+    // Set before anything else, so it is in place long before the token clears.
+    // Clearing the token used to wake two signed-out guards in the tabs, each of
+    // which navigated to the login screen while the caller navigated to the
+    // church search: three navigations at once, with the menu still closing.
+    setIsLoggingOut(true);
     try {
       const userSubId = user?.native_notify_indie_id;
       // Read the church id that was actually registered, not the one currently in
@@ -395,7 +409,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   return (
     <AuthContext.Provider
       value={{
-        user, appData, token, isLoading, features, locked, lockMessage,
+        user, appData, token, isLoading, isLoggingOut, features, locked, lockMessage,
         login, signup, logout, refreshUser, refreshChurch, setUser,
       }}
     >

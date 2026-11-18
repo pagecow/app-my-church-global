@@ -35,10 +35,9 @@ export default function HomeScreen() {
       .finally(() => setAppIdLoaded(true));
   }, []);
 
-  useEffect(() => {
-    if (authLoading || !appIdLoaded || token) return;
-    router.replace(appId ? '/login' : '/find-church');
-  }, [authLoading, appIdLoaded, token, appId, router]);
+  // The tab layout above this screen already sends a signed-out person to the
+  // login or search screen. This screen used to do the same, which made two
+  // navigations for one event.
 
   // The home feed is church-wide: it never carries a groupId, and the backend
   // filters on posts.group_id IS NULL. Group posts live at /groups/:id/posts.
