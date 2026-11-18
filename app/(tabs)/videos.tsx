@@ -853,7 +853,9 @@ function PlaylistPill({
 }
 
 const styles = StyleSheet.create({
-  pillScroll: { flexGrow: 0 },
+  // A horizontal scroll view in a column gives up height to the list below it
+  // unless told not to, which cut the bottom off the pills.
+  pillScroll: { flexGrow: 0, flexShrink: 0, minHeight: TAP + 2 },
   pillRow: { paddingHorizontal: GUTTER, paddingTop: 2, gap: 8 },
   pillHit: { height: TAP, justifyContent: 'center' },
   pill: {
