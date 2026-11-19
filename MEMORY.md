@@ -345,7 +345,7 @@ T.J. found in TestFlight that the bell did nothing, so 1.5.0 was replaced the sa
 - CC Church on a fresh install: its login screen does not ask the server about the church, so it is blue until the first sign-in. After that the remembered colour is used.
 
 ### How it was checked
-- iPhone simulator, signed in by T.J. to the Grace Church demo (colour set to the teal of its logo, `#127668`): Home, the comments sheet, Events (list and calendar), Groups, Videos and Give are all teal. In the Church App, "Find your church" stays blue and the login screen of the church picked there is teal.
+- iPhone simulator, signed in by T.J. to the Grace Church demo (colour set to the teal of its logo, `#127668`): Home, the comments sheet, Events (list and calendar), Groups, Videos and Give are all teal. Later the same day the demo's colour was cleared again (T.J. wanted the demo in App My Church's own blue for the landing page): after reopening the app, every tab was back in the standard blue. In the Church App, "Find your church" stays blue and the login screen of the church picked there is teal.
 - CC Church with this code starts on the simulator and shows its login screen in the standard blue (Central Community has no colour set).
 - `npm run typecheck` and `npm test` pass in both apps.
 - Not checked: Android, and a church changing its colour while the app is open (the church is re-read each time the app comes to the front, so it should change then).
