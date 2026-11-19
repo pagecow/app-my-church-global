@@ -45,7 +45,7 @@ A dedicated throwaway church exists so the Groups push test never touches a live
 app id          736377ff-419e-42ac-8713-5eac8ee8bb44   ("Groups Test")
 church_user id  70ea7758-55c5-4cb6-8bea-b2f0e478a099
 email           tj+groups@nativenotify.com
-password        GroupsTest123            (stored as sha256 hex)
+password        (removed from this file on 2026-11-19: this repo is public. Ask T.J.)
 indie id        c20645a4-307a-48f3-8bfc-8cdc42449ff4
 Native Notify   23936  (classic)
 groups_enabled  true   <- the ONLY app with the flag on
@@ -217,3 +217,75 @@ The profile dates from **2024-10-07** — still valid, so EAS reuses it forever.
 - `app/locked.tsx` shows the server's `lock_message`, "Try again" (`refreshChurch()`) and "Log out". `(tabs)/_layout.tsx` redirects there when signed in and locked. The church is re-read when the app returns to the foreground (at most every 30 s) and at once when any API call is refused with `403 { code: "church_locked" }` (a response interceptor).
 - Not verified on a device: the locked screen, tab hiding and the foreground refresh were checked by `tsc`, both `expo export` bundles and against the live API's answers, not by running the app.
 - The CC Church app (`amc-central-community-church`) has none of this. Its church is on Pro, so nothing changes for it.
+
+## 2026-11-19 09:15:00
+
+## 1.5.0 — what shipped, and how it was built and submitted from this Mac (no EAS Build, no EAS Submit)
+
+**This file is in a PUBLIC GitHub repo (`pagecow/app-my-church-global`).** Never write a password, key, token, Key ID, Issuer ID or service-account address in it. Those are kept outside git: see "Where the private details are" below.
+
+### Where 1.5.0 stands (2026-11-19)
+- Built from commit `13b1566` on `main`. `app.json`: version 1.5.0, iOS build "1.5.0", Android versionCode 26.
+- **Google Play** (`com.amc.appmychurchglobal`): 1.5.0 (26) put on the **production** track on 2026-11-19 (production had 25). Google reviews it before it goes live; that status cannot be read from the terminal.
+- **Apple** ("App My Church", Apple id 6736629497, bundle `com.amc.appmychurchglobal`): 1.5.0 sent for App Review on 2026-11-19 at 14:58 UTC, set to release by itself when approved. 1.4.2 had been waiting for review since 2026-11-18; with T.J.'s OK it was withdrawn and the same version record was turned into 1.5.0. **1.4.2 was never released on iPhone** (the live iPhone version was 1.3.3). 1.5.0 contains everything 1.4.0 to 1.4.2 had.
+- "What's New" used (T.J. approved the wording): `- fresh new look` / `- events can repeat weekly or monthly` / `- bug fixes`.
+- Not checked by an AI on a signed-in phone: reactions on comments, uploads, video, push, and Android behind the login. T.J. tests these himself.
+
+### What 1.5.0 changed
+- **Expo SDK 58** (expo 58.0.26, React Native 0.88.1, expo-router 58, React 19.3, TypeScript 6). It needs Xcode 26.4 or newer and supports iOS 16.4 or newer. This Mac has Xcode 27.2, which cannot build the old SDK 54 project, so the upgrade is what made local builds possible. `.env` sets `EXPO_PUBLIC_USE_RN_FETCH=1` (keeps React Native's own fetch for photo and video uploads); `.npmrc` has `legacy-peer-deps=true`.
+- **New look**, matching the website: every colour, text size and shape comes from `lib/theme.ts`, and screens are built from the parts in `components/ui.tsx`. A colour written directly in a screen is a mistake.
+- **Events** has an Upcoming list and a Calendar, and an event can repeat weekly, every two weeks, monthly or yearly. The date rules are in `lib/events.ts`. Event times are stored as typed, with no time zone (read them from the UTC fields). No RSVP on a repeating event.
+- **Like, love and pray fill in the moment they are tapped**, on posts, comments and replies. The rule is in `lib/reactions.ts`: show at once, tell the server in the background, one request at a time per reaction, the last tap wins, go back if the server refuses. Before this, comments waited 1 to 2 seconds and a second tap counted the member twice.
+- **The praying-hands icon is three ready-coloured pictures** (`assets/pray-*.png`). Never recolour an image with `tintColor`: on iPhone the icon vanished when it changed and did not draw at all in the comments sheet.
+- **"Didn't get your code?"** card under the code box on sign-up and forgot-password (`CodeHelp` in `components/ui.tsx`): it shows the typed address again in bold, has a "Fix My Email" button that goes back with everything still filled in, and says to look in spam. Reason: people mistype their email (`gmail.coom`), never get the code, and phone him thinking the app is broken. Back on the code step now returns to the form too.
+- Home has a "Share App" button in words, and the thumbs-up is the plain Material one (`thumb-up`).
+
+### Checks before a build
+- `npx tsc --noEmit` and `npm test` must pass. `npm test` runs the Events date rules in three time zones and the reaction rules (`tests/events.test.mjs`, `tests/reactions.test.mjs`).
+- **These files are the same in both phone apps and must stay the same:** `lib/theme.ts`, `components/ui.tsx`, `lib/events.ts`, `lib/reactions.ts`, `components/PostCard.tsx`, `components/EventFormSheet.tsx`, `components/EventDetailSheet.tsx`, and the two test files. Change one app, copy to the other, check with `diff -q`.
+- To try a change on the iPhone simulator (Expo Go can no longer open the project since SDK 58): from the app folder, `LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 npx expo run:ios --configuration Release --no-bundler --device <simulator udid>`. It makes a git-ignored `ios/` folder and installs a real build. Reinstalling keeps the sign-in.
+- Nobody but T.J. signs in on the simulator: an AI must not type a password. Screens before the login (church search, login, sign-up, the code screen) can be checked without one. To reach the sign-up code screen without emailing a real person, use the mail service's test address `delivered@resend.dev` on the Example Church, stop at the code screen, and delete the `church_user_otp` row afterwards.
+
+### Build the store files on this Mac
+- Bump `version`, `ios.buildNumber` and `android.versionCode` in `app.json` first (`eas.json` has `appVersionSource: local`). The Android versionCode must be higher than the one on Play production.
+- Commit and push, then from this app's folder:
+  ```
+  export LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 EAS_BUILD_NO_EXPO_GO_WARNING=true
+  eas build --platform ios --profile production --local --non-interactive --output <folder>/church-app-<version>.ipa
+  GOOGLE_SERVICES_JSON=$PWD/google-services.json eas build --platform android --profile production --local --non-interactive --output <folder>/church-app-<version>.aab
+  ```
+- Each takes about 5 to 15 minutes. An iPhone build and an Android build can run side by side. Run them detached (`nohup ... &`) and wait on a status file; `tmp/store-submit/build-all.sh` in the projects folder builds all four files for both apps this way.
+- **`LANG` and `LC_ALL` must be UTF-8** or CocoaPods crashes ("Unicode Normalization not appropriate for ASCII-8BIT") and fastlane complains.
+- `eas` here is the globally installed CLI (27.10.0 on 2026-11-19). `--local` builds on this Mac but still reads the signing certificates stored in the Expo account, so `eas whoami` must show a signed-in account. No cloud build minutes are used.
+- The Android build of this app fails without `GOOGLE_SERVICES_JSON` (the file is git-ignored here).
+- Before uploading, check the file really holds the new code: unzip it and search `main.jsbundle` (ipa) or `base/assets/index.android.bundle` (aab) for a string you added.
+
+### Submit to Google Play (production)
+Run from a folder that has no Fastfile, with the UTF-8 settings above:
+```
+fastlane supply --aab <file>.aab --track production --package_name com.amc.appmychurchglobal --json_key <this repo>/google-account.json --skip_upload_metadata true --skip_upload_images true --skip_upload_screenshots true --skip_upload_changelogs true
+```
+- Check afterwards (read-only): `fastlane run google_play_track_version_codes package_name:com.amc.appmychurchglobal track:production json_key:<path>` and `google_play_track_release_names`.
+- The key file belongs to a Google service account that T.J. invited in Play Console on 2026-11-19 with release permission for both apps. "The caller does not have permission" means that invite is missing for the app.
+- On 2026-11-19 build 26 first went to the internal track and was then promoted (`--track internal --track_promote_to production --version_code 26 --skip_upload_aab true`). That detour is not wanted: upload straight to production.
+
+### Submit to Apple (upload, then send for review)
+1. Upload: `xcrun altool --upload-app -f <file>.ipa -t ios --api-key <KEY ID> --api-issuer <ISSUER ID>`. It prints "UPLOAD SUCCEEDED" and a delivery id; `xcrun altool --build-status --delivery-id <id> ...` shows when Apple has finished processing (a few minutes).
+2. Send for review through the App Store Connect API with the same key (scripts in `tmp/store-submit/` in the projects folder): `POST /v1/appStoreVersions` (platform IOS, versionString, releaseType AFTER_APPROVAL, with the app and the build) → `PATCH /v1/appStoreVersionLocalizations/{id}` to set `whatsNew` → `POST /v1/reviewSubmissions` → `POST /v1/reviewSubmissionItems` (the submission plus the version) → `PATCH /v1/reviewSubmissions/{id}` with `submitted: true`. The version then reads WAITING_FOR_REVIEW.
+3. If a version is already waiting for review, Apple takes no second one. With T.J.'s OK: `PATCH /v1/reviewSubmissions/{id}` with `canceled: true`, wait about 10 seconds until the version reads DEVELOPER_REJECTED, then rename it (`PATCH /v1/appStoreVersions/{id}`, `versionString`), give it the new build (`PATCH /v1/appStoreVersions/{id}/relationships/build`) and submit again.
+- The key is an **App Store Connect API team key** named "Mac upload" (App Manager), made by T.J. on 2026-11-19. Its file is `~/.appstoreconnect/private_keys/AuthKey_<KEY ID>.p8`, where `altool` finds it by itself.
+- `~/Documents/APN-Key-Native-Notify/AuthKey_*.p8` is a different thing: the push-notification key Native Notify uses. App Store Connect answers 401 to it. Leave that file where it is.
+- The builds declare `usesNonExemptEncryption=false`, so Apple asks no export question.
+
+### Where the private details are
+- The Apple Key ID and Issuer ID, the Google service account's address, and the full log of this release: `/Users/thetjmccarty/Documents/app-my-church-projects/MEMORY.md` (the projects folder is not a git repo) and `tmp/store-submit/` beside it.
+- Keys themselves: `~/.appstoreconnect/private_keys/` (Apple) and `google-account.json` in this repo (Google; git-ignored here). Never print their contents.
+
+### T.J.'s rules for a release
+- **Submit straight to production.** No internal-testing or TestFlight-only step: "i always just want submission to be to production ... i test locally and you do, i'll just test again in production."
+- **Ask T.J. first** before writing the App Store "What's New" text (it is public) and before pulling anything he already submitted. Sending the build itself needs no question.
+- His "What's New" style is one to three short dash lines, for example `- Groups design upgrades`.
+- Commit and push before building, so what is in the stores is always in git.
+- Buttons members use are labelled with words, not only icons, and a screen where an ordinary mistake can leave someone stuck says in words what to check (many members are older; they phone T.J. when stuck).
+- The app never mentions plans, prices, upgrading or paying, and links to nothing that sells.
+
