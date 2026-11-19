@@ -289,3 +289,30 @@ fastlane supply --aab <file>.aab --track production --package_name com.amc.appmy
 - Buttons members use are labelled with words, not only icons, and a screen where an ordinary mistake can leave someone stuck says in words what to check (many members are older; they phone T.J. when stuck).
 - The app never mentions plans, prices, upgrading or paying, and links to nothing that sells.
 
+## 2026-11-19 10:30:00
+
+## 1.5.1 — the notifications bell, tapped push notifications, the Home header (replaced 1.5.0 in both stores)
+
+T.J. found in TestFlight that the bell did nothing, so 1.5.0 was replaced the same day before it was released.
+
+### Where 1.5.1 stands (2026-11-19)
+- Built from commit `0dd05a4`. `app.json`: version 1.5.1, iOS build "1.5.1", Android versionCode 27.
+- **Google Play** (`com.amc.appmychurchglobal`): 1.5.1 (27) uploaded straight to the **production** track (it had 26, which was still in Google's review).
+- **Apple** (Apple id 6736629497): 1.5.0 was withdrawn from review and the same version record was turned into 1.5.1 with the new build. State: WAITING_FOR_REVIEW, releases by itself when approved. **1.5.0 was never released on iPhone.** "What's New" is unchanged from 1.5.0 (T.J. approved that wording for this release).
+- How the resubmission was done: `node asc-replace-in-review.mjs 6736629497 1.5.1` in `tmp/store-submit/` of the projects folder (after `xcrun altool --upload-app` and a few minutes of processing). For Google, uploading a higher versionCode to production replaces the release that is in review.
+
+### What was wrong, and the rule to keep
+- **A hidden tab cannot be opened any more.** Notifications was a tab with `href: null` (no button in the tab bar), opened by the bell with `router.push('/notifications')`. That worked on Expo SDK 54. On SDK 58 the router treats `href: null` as "hidden" and redirects to the first tab: a spinner, then Home again. **A screen that must be reachable but is not a tab belongs outside `app/(tabs)/`**, as a screen of the root stack (`app/notifications.tsx`, listed in `app/_layout.tsx`), like Profile. `href: null` is still right for a tab the church does not have (Groups, Videos, Events on some plans): those must not be reachable.
+- **Tapping a push notification opened nothing.** The server's group push says "Tap to open the group", but no code listened for the tap. `components/PushTapHandler.tsx` (mounted in `app/_layout.tsx`, inside the sign-in provider) now opens the target, both while the app runs and when the tap starts it. It forgets the tap once handled, so a normal launch lands on Home.
+- **One rule for where a notification leads:** `lib/notifications.ts` (`notificationTarget`), used by the rows of the Notifications screen and by the push tap, with tests in `tests/notifications.test.mjs`. "Added to a group" (`group_added`, older `group_invite`) opens `/group/[id]`; `group_request` opens the group's requests; anything with a `postId` opens `/notification-thread`. On iPhone the data of a push is the APNs payload's `body` object (`content.data`).
+- **Home header** (`components/Navbar.tsx`): the church's icon shows only when the church uploaded a logo, never an initials box. The church name is sized by measuring it once at full size out of sight (`ChurchName`), not with `adjustsFontSizeToFit`: that shrank the letters inside a full-height line and left the name 3 points below the middle of the row.
+- The same three files as before stay identical in both apps, plus `lib/notifications.ts`, `components/PushTapHandler.tsx`, `app/notifications.tsx` and `tests/notifications.test.mjs`.
+
+### How it was checked
+- On the iPhone simulator, signed in by T.J.: the bell opens Notifications; the row "… added you to <group>" opens the group; Back returns to Notifications, then Home; the header was measured on a screenshot (capital letters level with the bell).
+- **A pretend push on the simulator:** write a file like `{"aps":{"alert":{"title":"…","body":"…"}},"body":{"type":"group_added","groupId":"<a real group id>"}}` and run `xcrun simctl push <udid> <bundle id> <file>`. Nothing is sent by the server. The banner only shows if the simulator has notification permission, and the app never asks for it on a simulator (Native Notify registers real devices only). To get the prompt once, add `Notifications.requestPermissionsAsync()` to a throwaway build, tap Allow, and remove the line again before committing. Tested this way: tap with the app open, tap with the app fully closed, then a normal launch.
+- Not checked: the push tap on Android, and a real push from the server on a real phone.
+- `npx expo run:ios` reuses the git-ignored `ios/` folder, so the simulator copy keeps the version number it was first made with. Delete `ios/` to refresh it. Store builds are not affected.
+
+### From T.J., same day
+- "Always make sure you're git commit and push after making updates." Commit and push every change without being asked.

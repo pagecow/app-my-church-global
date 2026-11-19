@@ -52,8 +52,9 @@ const stripHtml = (html: string) => {
  * Opened by the bell at the top of every tab.
  *
  * This is an ordinary screen over the tabs, like Profile. It used to be a hidden
- * tab (`href: null`); since Expo SDK 56 a hidden tab can no longer be opened (the
- * router sends the person back to the first tab), which is what broke the bell.
+ * tab (`href: null`). That worked on Expo SDK 54. On SDK 58 a hidden tab can no
+ * longer be opened (the router sends the person back to the first tab), which is
+ * what broke the bell.
  */
 export default function NotificationsScreen() {
   const { token, user } = useAuth();
