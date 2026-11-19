@@ -1,9 +1,13 @@
 import { Stack } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
 import { AuthProvider } from '../context/AuthContext';
 
 export default function RootLayout() {
   return (
     <AuthProvider>
+      {/* Dark clock and battery icons on our light pages. expo-router drew this
+          itself until SDK 56; without it Android shows them in white. */}
+      <StatusBar style="auto" />
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="login" />
