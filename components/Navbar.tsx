@@ -90,6 +90,7 @@ export default function Navbar({
   };
 
   const churchName = appData?.name || 'App My Church';
+  const logoUrl = typeof appData?.logo_url === 'string' && appData.logo_url.trim() ? appData.logo_url : null;
 
   return (
     <View style={[styles.navbar, { paddingTop: insets.top + 6 }]}>
@@ -99,16 +100,9 @@ export default function Navbar({
         </Text>
       ) : (
         <>
-          <Tile uri={appData?.logo_url} name={churchName} size={38} fit="contain" />
-          <Text
-            style={[text.title, styles.churchName]}
-            numberOfLines={1}
-            adjustsFontSizeToFit
-            minimumFontScale={0.75}
-            accessibilityRole="header"
-          >
-            {churchName}
-          </Text>
+          {/* Only a logo the church uploaded. Initials in a box said nothing the name beside it does not. */}
+          {logoUrl ? <Tile uri={logoUrl} name={churchName} size={38} fit="contain" /> : null}
+          <ChurchName name={churchName} afterLogo={Boolean(logoUrl)} />
         </>
       )}
 
@@ -200,6 +194,56 @@ export default function Navbar({
   );
 }
 
+const NAME_SIZE = 24;
+/** A long name is drawn smaller to stay on one line, but never smaller than this share of full size. */
+const NAME_MIN_SCALE = 0.75;
+
+/**
+ * The church's name at the top of Home, on one line.
+ *
+ * A long name is drawn smaller so it fits. The size is worked out here (the
+ * name is measured once at full size, out of sight) instead of with
+ * `adjustsFontSizeToFit`: that shrinks the letters but keeps the full-size
+ * line, which left the name sitting below the middle of the row.
+ */
+function ChurchName({ name, afterLogo }: { name: string; afterLogo: boolean }) {
+  const [room, setRoom] = useState(0);
+  const [fullWidth, setFullWidth] = useState(0);
+  const measured = room > 0 && fullWidth > 0;
+  const scale = measured ? Math.max(NAME_MIN_SCALE, Math.min(1, room / fullWidth)) : 1;
+  // Rounded down to half a point, so the name can never come out a hair too wide.
+  const fontSize = Math.floor(NAME_SIZE * scale * 2) / 2;
+
+  return (
+    <View
+      style={[styles.churchNameBox, afterLogo ? styles.churchNameAfterLogo : null]}
+      onLayout={(event) => setRoom(event.nativeEvent.layout.width)}
+    >
+      <View
+        style={styles.churchNameRuler}
+        pointerEvents="none"
+        accessibilityElementsHidden
+        importantForAccessibility="no-hide-descendants"
+      >
+        <Text
+          style={[styles.churchName, styles.churchNameRulerText]}
+          numberOfLines={1}
+          onLayout={(event) => setFullWidth(event.nativeEvent.layout.width)}
+        >
+          {name}
+        </Text>
+      </View>
+      <Text
+        style={[styles.churchName, { fontSize, opacity: measured ? 1 : 0 }]}
+        numberOfLines={1}
+        accessibilityRole="header"
+      >
+        {name}
+      </Text>
+    </View>
+  );
+}
+
 function MenuRow({
   icon,
   label,
@@ -236,7 +280,13 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   title: { flex: 1 },
-  churchName: { flex: 1, marginLeft: 8 },
+  churchNameBox: { flex: 1, minHeight: TAP, justifyContent: 'center' },
+  churchNameAfterLogo: { marginLeft: 8 },
+  // No fixed line height: the line is as tall as the letters, so the row centres it exactly.
+  churchName: { ...text.title, lineHeight: undefined },
+  // Wide enough that the name is never cut while it is being measured.
+  churchNameRuler: { position: 'absolute', left: 0, top: 0, width: 3000, opacity: 0 },
+  churchNameRulerText: { alignSelf: 'flex-start' },
   iconBtn: { width: TAP, height: TAP, alignItems: 'center', justifyContent: 'center' },
   badge: {
     position: 'absolute',

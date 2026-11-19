@@ -1,12 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { StyleSheet, View, Text, FlatList, RefreshControl, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useAuth } from '../../context/AuthContext';
+import { useAuth } from '../context/AuthContext';
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
-import { EmptyState, Loading, StackHeader } from '../../components/ui';
-import { colors, GUTTER, radius, shapes, text } from '../../lib/theme';
+import { EmptyState, Loading, StackHeader } from '../components/ui';
+import { colors, GUTTER, radius, shapes, text } from '../lib/theme';
+import { notificationTarget, parsePushData } from '../lib/notifications';
 
 const API_URL = 'https://appmychurch.com/api/v1';
 
@@ -47,6 +48,13 @@ const stripHtml = (html: string) => {
     .trim();
 };
 
+/**
+ * Opened by the bell at the top of every tab.
+ *
+ * This is an ordinary screen over the tabs, like Profile. It used to be a hidden
+ * tab (`href: null`); since Expo SDK 56 a hidden tab can no longer be opened (the
+ * router sends the person back to the first tab), which is what broke the bell.
+ */
 export default function NotificationsScreen() {
   const { token, user } = useAuth();
   const router = useRouter();
@@ -58,62 +66,10 @@ export default function NotificationsScreen() {
     if (token && user?.native_notify_indie_id) fetchNotifications();
   }, [token, user?.native_notify_indie_id]);
 
-  const parsePushData = (pushData: any) => {
-    if (!pushData) return {};
-    if (typeof pushData === 'string') {
-      try {
-        return JSON.parse(pushData);
-      } catch {
-        return {};
-      }
-    }
-    if (typeof pushData === 'object') return pushData;
-    return {};
-  };
-
+  /** Opens the post or the group a row is about. Where a row leads is decided in lib/notifications.ts. */
   const openNotificationTarget = (item: any) => {
-    const data = parsePushData(item?.pushData);
-    const groupId = data?.groupId ? String(data.groupId) : undefined;
-
-    // Group events are handled before post routing: neither has a postId, so
-    // the old guard would silently swallow the tap.
-    //
-    // `group_added` is informational - membership is created at invite time, so
-    // there is no invite to accept and no inviteId to pass. `group_invite` is
-    // the legacy type, still handled so a push queued before the change lands.
-    if ((data?.type === 'group_added' || data?.type === 'group_invite') && groupId) {
-      router.push({
-        pathname: '/group/[id]',
-        params:
-          data?.type === 'group_invite' && data?.inviteId
-            ? { id: groupId, inviteId: String(data.inviteId) }
-            : { id: groupId },
-      });
-      return;
-    }
-
-    if (data?.type === 'group_request' && groupId) {
-      router.push({
-        pathname: '/group/[id]/requests',
-        params: { id: groupId },
-      });
-      return;
-    }
-
-    const postId = data?.postId;
-    const commentId = data?.parentId || data?.commentId;
-    if (!postId) return;
-    const shouldOpenComments = Boolean(data?.comment || data?.reply || commentId);
-
-    router.push({
-      pathname: '/notification-thread',
-      params: {
-        postId,
-        ...(commentId ? { commentId } : {}),
-        ...(groupId ? { groupId } : {}),
-        openComments: shouldOpenComments ? '1' : '0',
-      },
-    });
+    const target = notificationTarget(item?.pushData);
+    if (target) router.push(target);
   };
 
   const fetchNotifications = async () => {
@@ -152,10 +108,7 @@ export default function NotificationsScreen() {
             const pushData = parsePushData(item.pushData);
             const preview = stripHtml(pushData.reply || pushData.comment || item.message || '');
             // A row opens a post, or the group it is about. Anything else is only a message.
-            const canOpen =
-              Boolean(pushData.postId) ||
-              (Boolean(pushData.groupId) &&
-                ['group_added', 'group_invite', 'group_request'].includes(pushData.type));
+            const canOpen = notificationTarget(item.pushData) !== null;
             return (
               <TouchableOpacity
                 style={[

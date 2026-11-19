@@ -48,9 +48,6 @@ export default function TabLayout() {
 
   return (
     <Tabs
-      // Back from a screen opened over the tabs (Notifications) returns to the
-      // tab the person was on, not always to Home.
-      backBehavior="history"
       screenOptions={{
         headerShown: false,
         tabBarActiveTintColor: colors.azure,
@@ -89,14 +86,6 @@ export default function TabLayout() {
           title: 'Events',
           tabBarIcon: tabIcon('calendar', 'calendar-outline'),
           ...hiddenUnless(features.events),
-        }}
-      />
-      <Tabs.Screen
-        name="notifications"
-        options={{
-          title: 'Notifications',
-          href: null,
-          tabBarIcon: tabIcon('notifications', 'notifications-outline'),
         }}
       />
       <Tabs.Screen
