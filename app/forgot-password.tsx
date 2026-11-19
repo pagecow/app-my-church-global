@@ -15,7 +15,7 @@ import {
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
-import { Button, StackHeader, Tile } from '../components/ui';
+import { Button, CodeHelp, StackHeader, Tile } from '../components/ui';
 import { colors, GUTTER, shapes, TAP, text } from '../lib/theme';
 
 type Step = 'email' | 'otp' | 'password';
@@ -53,6 +53,12 @@ export default function ForgotPasswordScreen() {
 
     loadData();
   }, [params.email]);
+
+  /** Back to the email box, so a misspelled email can be corrected. */
+  const fixEmail = () => {
+    setOtp('');
+    setStep('email');
+  };
 
   const sendOtp = async () => {
     if (!email.trim()) {
@@ -240,6 +246,7 @@ export default function ForgotPasswordScreen() {
               >
                 <Text style={text.link}>Resend Code</Text>
               </TouchableOpacity>
+              <CodeHelp email={email} onFixEmail={fixEmail} />
             </>
           )}
 

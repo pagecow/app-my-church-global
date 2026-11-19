@@ -7,7 +7,7 @@ import { useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { Button, StackHeader, Tile } from '../components/ui';
+import { Button, CodeHelp, StackHeader, Tile } from '../components/ui';
 import { colors, GUTTER, shapes, TAP, text } from '../lib/theme';
 
 const API_URL = 'https://appmychurch.com/api/v1';
@@ -141,6 +141,12 @@ export default function SignupScreen() {
     finally { setIsLoading(false); }
   };
 
+  /** Back to the form with everything still filled in, so a misspelled email can be corrected. */
+  const fixEmail = () => {
+    setOtp('');
+    setStep('form');
+  };
+
   const handleResend = async () => {
     try {
       await axios.post(`${API_URL}/signup/send-otp`, { email, appId });
@@ -150,7 +156,7 @@ export default function SignupScreen() {
 
   return (
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={shapes.page}>
-      <StackHeader onBack={() => router.back()} />
+      <StackHeader onBack={() => (step === 'otp' ? fixEmail() : router.back())} />
       <ScrollView
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
@@ -328,6 +334,8 @@ export default function SignupScreen() {
                   <Text style={text.link}>Resend Code</Text>
                 </TouchableOpacity>
               )}
+
+              <CodeHelp email={email} onFixEmail={fixEmail} />
             </View>
           )}
         </View>

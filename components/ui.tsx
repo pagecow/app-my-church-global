@@ -485,6 +485,37 @@ export function Notice({
   );
 }
 
+/**
+ * Goes under the box where someone types a code that was emailed to them.
+ *
+ * Most "I never got my code" calls are a misspelled address, so the address is
+ * shown again in large type, with a button, in words, that takes them back to
+ * fix it.
+ */
+export function CodeHelp({
+  email,
+  onFixEmail,
+  style,
+}: {
+  email: string;
+  onFixEmail: () => void;
+  style?: StyleProp<ViewStyle>;
+}) {
+  return (
+    <View style={[styles.codeHelp, style]}>
+      <Text style={styles.codeHelpTitle} accessibilityRole="header">
+        Didn’t get your code?
+      </Text>
+      <Text style={styles.codeHelpText}>Check that your email is spelled correctly:</Text>
+      <Text style={styles.codeHelpEmail} selectable>
+        {email.trim()}
+      </Text>
+      <Button label="Fix My Email" kind="tinted" onPress={onFixEmail} style={styles.codeHelpButton} />
+      <Text style={styles.codeHelpText}>Also look in your spam or junk folder.</Text>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   avatarImage: { backgroundColor: colors.fill },
   logoImage: { backgroundColor: colors.card },
@@ -605,4 +636,24 @@ const styles = StyleSheet.create({
   noticeText: { flex: 1, fontSize: 14, lineHeight: 19 },
   noticeAction: { minHeight: 32, justifyContent: 'center' },
   noticeActionText: { fontSize: 14, fontWeight: '600' },
+
+  codeHelp: {
+    marginTop: 24,
+    padding: 20,
+    borderRadius: radius.xl,
+    backgroundColor: colors.card,
+    alignItems: 'center',
+  },
+  codeHelpTitle: { ...text.headline, textAlign: 'center', marginBottom: 6 },
+  codeHelpText: { ...text.body, color: colors.inkSoft, textAlign: 'center' },
+  // Large and dark on purpose: this is where a wrong letter gets noticed.
+  codeHelpEmail: {
+    fontSize: 19,
+    lineHeight: 26,
+    fontWeight: '700',
+    color: colors.ink,
+    textAlign: 'center',
+    marginTop: 6,
+  },
+  codeHelpButton: { alignSelf: 'stretch', marginTop: 14, marginBottom: 14 },
 });
