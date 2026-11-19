@@ -316,3 +316,43 @@ T.J. found in TestFlight that the bell did nothing, so 1.5.0 was replaced the sa
 
 ### From T.J., same day
 - "Always make sure you're git commit and push after making updates." Commit and push every change without being asked.
+
+## 2026-11-19 12:30:00
+
+## 1.5.2 — the app takes its colour from the church (replaced 1.5.1 in both stores)
+
+### What it is
+- A church can pick one colour on the dashboard (the "Logo and colors" page of the website project). The app paints its buttons, links, selected tab, the round plus, the Like thumb, "Share App", the selected day and similar marks with that colour. A church that has not picked one looks exactly as before (the standard blue).
+- The colour arrives as the optional field `theme_color` ("#rrggbb" or null) of the church: inside `GET /user` (`app`), on `GET /app/:appId`, and on each row of the church search (`GET /churches`). A missing field means the same as null.
+
+### The rules to keep
+- **There is no fixed blue in the app any more.** `lib/theme.ts` has no `azure`, `azureText`, `azureTint`, `azureTintText` or `like`, and `text` has no `link`. That is on purpose: a screen that tries to use them does not compile.
+  - Inside a component: `const accent = useAccent();` then `accent.azure`, `accent.azureText`, `accent.azureTint`, `accent.azureTintText`.
+  - A StyleSheet that needs the colour: `const useStyles = themedStyles((accent) => StyleSheet.create({ ... }));` and `const styles = useStyles();` as the FIRST lines of each component in the file, before any early `return` (PostCard once crashed with "Rendered fewer hooks" for that mistake).
+  - Link text: `linkText(accent)` from `lib/theme.ts`.
+- `lib/accent.ts` works out the four shades from the one colour, and darkens a colour that is too light for white words. **The same file is in the other phone app and in the website (`app-my-church/lib/accent.ts`): all three must stay identical**, or the dashboard's preview will not match the app. Its tests are `tests/accent.test.mjs` (part of `npm test`).
+- `lib/churchColor.ts` holds the shades in use (one small store, nothing wrapped around the screens):
+  - `setChurchColor(church.theme_color)` wherever the app learns about a church (`context/AuthContext.tsx`, and picking a church in the Church App's `app/find-church.tsx`);
+  - `showStandardColor()` on a screen that belongs to no church ("Find your church"): it paints the standard blue without forgetting the church's colour;
+  - `loadChurchColor()` once at start, so the first screen is already in the colour seen last time (kept in AsyncStorage under `churchThemeColor`).
+- Love (red) and pray (gold) keep their own colours. Red and green keep their meaning.
+- The website draws a preview of the Home screen for the dashboard (`components/dash/AppHomePreview.tsx` there). If Home or its header changes here, change that drawing too.
+- Identical in both apps, on top of the earlier list: `lib/accent.ts`, `lib/churchColor.ts`, `lib/theme.ts`, `tests/accent.test.mjs`.
+
+### Not painted in the church's colour
+- The text cursor and selection handles, system alerts, and Android's date and time picker dialogs (they take the phone's own colour).
+- The app's own icon, shown on the login screens when a church has no logo.
+- CC Church on a fresh install: its login screen does not ask the server about the church, so it is blue until the first sign-in. After that the remembered colour is used.
+
+### How it was checked
+- iPhone simulator, signed in by T.J. to the Grace Church demo (colour set to the teal of its logo, `#127668`): Home, the comments sheet, Events (list and calendar), Groups, Videos and Give are all teal. In the Church App, "Find your church" stays blue and the login screen of the church picked there is teal.
+- CC Church with this code starts on the simulator and shows its login screen in the standard blue (Central Community has no colour set).
+- `npm run typecheck` and `npm test` pass in both apps.
+- Not checked: Android, and a church changing its colour while the app is open (the church is re-read each time the app comes to the front, so it should change then).
+
+### Where 1.5.2 stands (2026-11-19)
+- Built from commit `c169988`. `app.json`: version 1.5.2, iOS build "1.5.2", Android versionCode 28.
+- **Google Play** (`com.amc.appmychurchglobal`): 1.5.2 (28) uploaded straight to the **production** track.
+- **Apple** (Apple id 6736629497): 1.5.1 was withdrawn from review and the same version record was turned into 1.5.2 with the new build (`node asc-replace-in-review.mjs 6736629497 1.5.2` in `tmp/store-submit/` of the projects folder, after `xcrun altool --upload-app` and about four minutes of processing). State: WAITING_FOR_REVIEW, releases by itself when approved. **1.5.0 and 1.5.1 were never released on iPhone.** "What's New" is unchanged (the text T.J. approved for 1.5.0).
+- The four store files are in `tmp/builds/` of the projects folder (`church-app-1.5.2.*`, `cc-church-1.5.2.*`); `tmp/store-submit/build-all.sh` builds all four (change the version in its file names first).
+- A colour only shows in app versions from 1.5.2, and only after the website has the `theme_color` field (it has, since 2026-11-19).
