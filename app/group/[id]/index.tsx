@@ -260,12 +260,12 @@ export default function GroupDetailScreen() {
             <View style={styles.footerLoader}>
               <Text style={styles.footerText}>No more posts</Text>
             </View>
-          ) : null
+          ) : undefined
         }
         ListEmptyComponent={
           isMember ? (
             <EmptyState icon="chatbubbles-outline" title="No posts in this group yet." />
-          ) : null
+          ) : undefined
         }
       />
     </View>

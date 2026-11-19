@@ -9,11 +9,14 @@ import { colors } from '../../lib/theme';
 
 type IoniconName = React.ComponentProps<typeof Ionicons>['name'];
 
-/** The filled icon marks the tab you are on; the outline is every other tab. */
+/**
+ * The filled icon marks the tab you are on; the outline is every other tab.
+ * The tab bar hands back the tint set below, which is always a colour string.
+ */
 const tabIcon =
   (on: IoniconName, off: IoniconName) =>
   ({ color, focused }: { color: ColorValue; focused: boolean }) =>
-    <Ionicons name={focused ? on : off} size={25} color={color} />;
+    <Ionicons name={focused ? on : off} size={25} color={color as string} />;
 
 export default function TabLayout() {
   const router = useRouter();

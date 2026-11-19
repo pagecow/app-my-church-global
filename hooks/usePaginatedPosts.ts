@@ -46,7 +46,7 @@ export function usePaginatedPosts({
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
-  const appStateRef = useRef<AppStateStatus>(AppState.currentState);
+  const appStateRef = useRef<AppStateStatus>(AppState.currentState as AppStateStatus);
   const backgroundAtRef = useRef<number | null>(null);
   const canLoadMoreOnEndReachedRef = useRef(false);
   const loadMoreInFlightRef = useRef(false);
