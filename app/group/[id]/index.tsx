@@ -25,11 +25,13 @@ import {
 } from '../../../components/ui';
 import { usePaginatedPosts } from '../../../hooks/usePaginatedPosts';
 import { API_URL, Group, groupsApi, groupsErrorMessage } from '../../../lib/groups';
+import { useAccent } from '../../../lib/churchColor';
 import { CARD_GAP, colors, GUTTER, radius, shapes, text } from '../../../lib/theme';
 
 const REFRESH_KEY = 'needsGroupsRefresh';
 
 export default function GroupDetailScreen() {
+  const accent = useAccent();
   const { token, user } = useAuth();
   const router = useRouter();
   const params = useLocalSearchParams<{ id?: string; inviteId?: string }>();
@@ -253,7 +255,7 @@ export default function GroupDetailScreen() {
         ListFooterComponent={
           isLoadingMore ? (
             <View style={styles.footerLoader}>
-              <ActivityIndicator size="small" color={colors.azure} />
+              <ActivityIndicator size="small" color={accent.azure} />
               <Text style={styles.footerText}>Loading more posts...</Text>
             </View>
           ) : !hasMore && posts.length > 0 ? (

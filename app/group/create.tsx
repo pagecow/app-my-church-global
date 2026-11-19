@@ -16,6 +16,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from '../../context/AuthContext';
 import { EmptyState, GroupLabel, IconName, SheetHeader } from '../../components/ui';
 import { GroupVisibility, groupsApi, groupsErrorMessage } from '../../lib/groups';
+import { useAccent } from '../../lib/churchColor';
 import { colors, GUTTER, shapes, TAP, text } from '../../lib/theme';
 
 export default function CreateGroupScreen() {
@@ -143,6 +144,7 @@ function VisibilityOption({
   selected: boolean;
   onPress: () => void;
 }) {
+  const accent = useAccent();
   return (
     <TouchableOpacity
       style={styles.option}
@@ -159,7 +161,7 @@ function VisibilityOption({
       <Ionicons
         name={selected ? 'checkmark-circle' : 'ellipse-outline'}
         size={24}
-        color={selected ? colors.azure : colors.inkFaint}
+        color={selected ? accent.azure : colors.inkFaint}
       />
     </TouchableOpacity>
   );

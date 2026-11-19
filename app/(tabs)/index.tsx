@@ -16,11 +16,13 @@ import Navbar from '../../components/Navbar';
 import { Avatar, Button, EmptyState, Loading } from '../../components/ui';
 import { API_URL } from '../../lib/groups';
 import { usePaginatedPosts } from '../../hooks/usePaginatedPosts';
+import { useAccent } from '../../lib/churchColor';
 import { CARD_GAP, colors, GUTTER, radius, shapes, text } from '../../lib/theme';
 
 const REFRESH_KEY = 'needsHomeRefresh';
 
 export default function HomeScreen() {
+  const accent = useAccent();
   const { user, token, appData, isLoading: authLoading } = useAuth();
   const router = useRouter();
 
@@ -109,7 +111,7 @@ export default function HomeScreen() {
     <>
       {isLoadingMore && (
         <View style={styles.footerLoader}>
-          <ActivityIndicator size="small" color={colors.azure} />
+          <ActivityIndicator size="small" color={accent.azure} />
           <Text style={styles.footerText}>Loading more posts...</Text>
         </View>
       )}

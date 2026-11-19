@@ -9,6 +9,7 @@ import {
   groupsApi,
   groupsErrorMessage,
 } from '../../../lib/groups';
+import { useAccent } from '../../../lib/churchColor';
 import { colors, GUTTER, radius, shapes, TAP, text } from '../../../lib/theme';
 
 const RowSeparator = () => (
@@ -18,6 +19,7 @@ const RowSeparator = () => (
 );
 
 export default function GroupRequestsScreen() {
+  const accent = useAccent();
   const { token } = useAuth();
   const router = useRouter();
   const params = useLocalSearchParams<{ id?: string }>();
@@ -105,7 +107,7 @@ export default function GroupRequestsScreen() {
               </View>
               <View style={styles.actions}>
                 {busy ? (
-                  <ActivityIndicator size="small" color={colors.azure} />
+                  <ActivityIndicator size="small" color={accent.azure} />
                 ) : (
                   <>
                     <CircleButton

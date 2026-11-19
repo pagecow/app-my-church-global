@@ -4,6 +4,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
 import Constants from 'expo-constants';
 import { registerIndieID, unregisterIndieDevice } from 'native-notify';
+import { loadChurchColor, setChurchColor } from '../lib/churchColor';
 
 interface User {
   id: string;
@@ -18,6 +19,12 @@ interface AppData {
   id: string;
   name: string;
   logo_url: string | null;
+  /**
+   * The church's own colour ("#rrggbb"), picked in the dashboard. Null, or not
+   * sent at all by an older server, means the standard blue. The screens never
+   * read this: it is handed to `setChurchColor` (lib/churchColor.ts).
+   */
+  theme_color?: string | null;
   payment_link: string | null;
   donation_quote: string | null;
   about_church: string | null;
@@ -219,6 +226,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const loadStoredData = async () => {
     try {
+      // First, so the very first screen is already in the colour of the church
+      // seen last time, even if the network is slow or down.
+      await loadChurchColor();
       const storedToken = await AsyncStorage.getItem('accessToken');
       const storedUser = await AsyncStorage.getItem('userData');
       if (storedToken && storedUser) {
@@ -234,7 +244,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             profile_picture_url: fullUser.profile_picture_url, is_admin: fullUser.is_admin,
             native_notify_indie_id: fullUser.native_notify_indie_id,
           });
-          if (fullUser.app) setAppData(fullUser.app);
+          if (fullUser.app) {
+            setAppData(fullUser.app);
+            setChurchColor(fullUser.app.theme_color);
+          }
         } catch (e: any) {
           if (axios.isAxiosError(e) && e.response?.status === 401) {
             await clearStoredAuth();
@@ -260,7 +273,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       };
       setUser(u);
       await AsyncStorage.setItem('userData', JSON.stringify(u));
-      if (fullUser.app) setAppData(fullUser.app);
+      if (fullUser.app) {
+        setAppData(fullUser.app);
+        setChurchColor(fullUser.app.theme_color);
+      }
     } catch (e: any) {
       if (axios.isAxiosError(e) && e.response?.status === 401) {
         await clearStoredAuth();
@@ -283,7 +299,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const res = await fetchCurrentUser(requestToken);
       // The session ended, or became someone else's, while this was in flight.
       if (tokenRef.current !== requestToken) return;
-      if (res.data?.app) setAppData(res.data.app);
+      if (res.data?.app) {
+        setAppData(res.data.app);
+        setChurchColor(res.data.app.theme_color);
+      }
     } catch (e: any) {
       if (tokenRef.current !== requestToken) return;
       if (axios.isAxiosError(e) && e.response?.status === 401) {
@@ -321,6 +340,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       try {
         const appRes = await axios.get(`${API_URL}/app/${appId}`);
         setAppData(appRes.data);
+        setChurchColor(appRes.data?.theme_color);
       } catch {}
     } catch (error: any) {
       throw new Error(error.response?.data?.message || 'Login failed');
@@ -340,6 +360,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       try {
         const appRes = await axios.get(`${API_URL}/app/${data.appId}`);
         setAppData(appRes.data);
+        setChurchColor(appRes.data?.theme_color);
       } catch {}
     } catch (error: any) {
       throw new Error(error.response?.data?.message || 'Signup failed');

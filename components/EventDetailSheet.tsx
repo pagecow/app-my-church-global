@@ -14,6 +14,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Avatar, CircleButton, IconName } from './ui';
+import { themedStyles, useAccent } from '../lib/churchColor';
 import { colors, GUTTER, radius, text } from '../lib/theme';
 import {
   countRsvps,
@@ -60,6 +61,7 @@ export default function EventDetailSheet({
   onOptions: (event: EventItem) => void;
   onClose: () => void;
 }) {
+  const styles = useStyles();
   const insets = useSafeAreaInsets();
   // A page sheet on iPhone already starts below the status bar.
   const topInset = Platform.OS === 'ios' ? 0 : insets.top;
@@ -140,10 +142,12 @@ function whenLine(event: EventItem, day: Date | null): string {
 }
 
 function Fact({ icon, primary, secondary }: { icon: IconName; primary: string; secondary?: string | null }) {
+  const accent = useAccent();
+  const styles = useStyles();
   return (
     <View style={styles.fact}>
       <View style={styles.factIcon}>
-        <Ionicons name={icon} size={20} color={colors.azureText} />
+        <Ionicons name={icon} size={20} color={accent.azureText} />
       </View>
       <View style={styles.factText}>
         <Text style={styles.factPrimary}>{primary}</Text>
@@ -164,6 +168,7 @@ function Rsvp({
   loading: boolean;
   onRsvp: (eventId: string, response: RSVPResponse) => void;
 }) {
+  const styles = useStyles();
   const mine = myRsvp(event, userId);
   const counts = countRsvps(event.rsvps);
   const going = (event.rsvps || []).filter((r) => r.response === 'YES');
@@ -220,7 +225,7 @@ function Rsvp({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = themedStyles((accent) => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.card },
   photo: { width: '100%', height: 250, backgroundColor: colors.fill },
   controls: {
@@ -245,7 +250,7 @@ const styles = StyleSheet.create({
   factText: { flex: 1, gap: 1 },
   factPrimary: { fontSize: 16, lineHeight: 21, fontWeight: '600', color: colors.ink },
   description: { fontSize: 16, lineHeight: 24, color: colors.inkSoft },
-  link: { color: colors.azureText, textDecorationLine: 'underline' },
+  link: { color: accent.azureText, textDecorationLine: 'underline' },
 
   rsvp: { backgroundColor: colors.page, borderRadius: radius.xl, padding: GUTTER, gap: 12 },
   rsvpHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
@@ -259,11 +264,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: 6,
   },
-  rsvpChoiceOn: { backgroundColor: colors.azure },
+  rsvpChoiceOn: { backgroundColor: accent.azure },
   rsvpChoiceText: { fontSize: 15, fontWeight: '600', color: colors.ink },
   rsvpChoiceTextOn: { color: colors.white },
   rsvpSummary: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   rsvpFaces: { flexDirection: 'row' },
   rsvpFace: { borderWidth: 2, borderColor: colors.page },
   rsvpFaceOverlap: { marginLeft: -9 },
-});
+}));

@@ -28,6 +28,7 @@ import {
   groupsApi,
   groupsErrorMessage,
 } from '../../../lib/groups';
+import { useAccent } from '../../../lib/churchColor';
 import { colors, GUTTER, radius, shapes, text } from '../../../lib/theme';
 
 const roleLabel = (role: string) =>
@@ -46,6 +47,7 @@ const RowSeparator = () => (
 );
 
 export default function GroupMembersScreen() {
+  const accent = useAccent();
   const { token, user } = useAuth();
   const router = useRouter();
   const params = useLocalSearchParams<{ id?: string }>();
@@ -211,7 +213,7 @@ export default function GroupMembersScreen() {
                       }
                     }}
                   />
-                  {searching ? <ActivityIndicator size="small" color={colors.azure} /> : null}
+                  {searching ? <ActivityIndicator size="small" color={accent.azure} /> : null}
                 </View>
                 {!search.trim() ? null : results.length === 0 && !searching ? (
                   <Text style={[text.footnote, styles.noMatch]}>Nobody matches that search.</Text>

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
   StyleSheet,
   View,
@@ -9,16 +9,28 @@ import {
   Linking,
 } from 'react-native';
 import axios from 'axios';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { Button, EmptyState, Loading, Tile } from '../components/ui';
+import { setChurchColor, showStandardColor } from '../lib/churchColor';
 import { colors, GUTTER, shapes, text } from '../lib/theme';
 
 // A free sign-up page. It is the only outside link this screen may carry, and
 // it opens in the phone's own browser, not inside the app.
 const CREATE_CHURCH_URL = 'https://appmychurch.com/Signup';
+
+/** A church as the search lists it. */
+interface ChurchRow {
+  id: string;
+  name: string;
+  city?: string | null;
+  state_province?: string | null;
+  logo_url?: string | null;
+  /** The church's own colour. Older servers do not send it. */
+  theme_color?: string | null;
+}
 
 const TILE_SIZE = 48;
 const ROW_PADDING_LEFT = 12;
@@ -26,12 +38,20 @@ const ROW_GAP = 12;
 
 export default function FindChurchScreen() {
   const [search, setSearch] = useState('');
-  const [churches, setChurches] = useState<any[]>([]);
+  const [churches, setChurches] = useState<ChurchRow[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
   const API_URL = 'https://appmychurch.com/api/v1';
+
+  // This screen belongs to no church, so it is always the standard blue, also
+  // when someone comes back to it from a church's login screen.
+  useFocusEffect(
+    useCallback(() => {
+      showStandardColor();
+    }, [])
+  );
 
   const handleSearch = async (text: string) => {
     setSearch(text);
@@ -50,7 +70,9 @@ export default function FindChurchScreen() {
     }
   };
 
-  const selectChurch = async (church: any) => {
+  const selectChurch = async (church: ChurchRow) => {
+    // The login, sign-up and forgot-password screens that follow are this church's.
+    setChurchColor(church.theme_color);
     await AsyncStorage.setItem('appId', church.id);
     await AsyncStorage.setItem('churchName', church.name);
     if (church.logo_url) {

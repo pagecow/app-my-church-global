@@ -15,7 +15,7 @@ const API_URL = 'https://appmychurch.com/api/v1';
  * The top of every tab.
  *
  * Home passes no `title` and gets the church's logo and name. Every other tab
- * passes its own title ("Events"). `onAdd` shows the round blue plus button,
+ * passes its own title ("Events"). `onAdd` shows the round plus button (in the church's colour),
  * which screens pass for admins only.
  */
 export default function Navbar({

@@ -4,9 +4,12 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../context/AuthContext';
 import Navbar from '../../components/Navbar';
 import { Button } from '../../components/ui';
+import { themedStyles, useAccent } from '../../lib/churchColor';
 import { colors, GUTTER, radius, shapes, text } from '../../lib/theme';
 
 export default function GiveScreen() {
+  const accent = useAccent();
+  const styles = useStyles();
   const { appData } = useAuth();
 
   const defaultMessage = 'Your generous contributions help us spread faith, hope, and love throughout our community and beyond. Thank you for supporting our mission and making a difference in the lives of others.';
@@ -24,7 +27,7 @@ export default function GiveScreen() {
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.card}>
           <View style={styles.heart}>
-            <Ionicons name="heart" size={32} color={colors.azure} />
+            <Ionicons name="heart" size={32} color={accent.azure} />
           </View>
 
           <Text style={styles.message}>{donationQuote}</Text>
@@ -51,7 +54,7 @@ export default function GiveScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = themedStyles((accent) => StyleSheet.create({
   content: { paddingHorizontal: GUTTER, paddingTop: 6, paddingBottom: 24 },
   card: {
     alignItems: 'center',
@@ -66,7 +69,7 @@ const styles = StyleSheet.create({
     width: 64,
     height: 64,
     borderRadius: 32,
-    backgroundColor: colors.azureTint,
+    backgroundColor: accent.azureTint,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -82,4 +85,4 @@ const styles = StyleSheet.create({
   note: { ...text.footnote, textAlign: 'center' },
   /* Pulled up a little so the note reads as part of the button above it. */
   noteUnderButton: { marginTop: -6 },
-});
+}));

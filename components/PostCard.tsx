@@ -6,6 +6,7 @@ import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import axios from 'axios';
 import { Avatar, Button, CircleButton } from './ui';
+import { themedStyles, useAccent } from '../lib/churchColor';
 import { CARD_GAP, colors, GUTTER, radius, TAP } from '../lib/theme';
 import { ReactionBook, setReactionInThread, toggleReaction } from '../lib/reactions';
 
@@ -144,6 +145,8 @@ export const PostCard: React.FC<PostCardProps> = ({
   initialOpenComments = false,
   initialFocusCommentId = null,
 }) => {
+  const accent = useAccent();
+  const styles = useStyles();
   const initialPostComments = Array.isArray(post.comment) ? post.comment : [];
   const initialReplyCount = initialPostComments.reduce((sum: number, item: any) => {
     if (typeof item?._count?.replies === 'number') return sum + item._count.replies;
@@ -711,7 +714,7 @@ export const PostCard: React.FC<PostCardProps> = ({
           <MaterialIcons
             name={isLiked ? 'thumb-up' : 'thumb-up-off-alt'}
             size={19}
-            color={isLiked ? colors.like : colors.inkMuted}
+            color={isLiked ? accent.azure : colors.inkMuted}
           />
           {likes > 0 ? <Text style={styles.reactionCount}>{likes}</Text> : null}
         </TouchableOpacity>
@@ -770,7 +773,7 @@ export const PostCard: React.FC<PostCardProps> = ({
                   accessibilityRole="button"
                   accessibilityLabel={`Open group ${groupName}`}
                 >
-                  <Ionicons name="people" size={13} color={colors.azureText} />
+                  <Ionicons name="people" size={13} color={accent.azureText} />
                   <Text style={styles.groupBadge} numberOfLines={1}>
                     {groupName}
                   </Text>
@@ -891,7 +894,7 @@ export const PostCard: React.FC<PostCardProps> = ({
           <MaterialIcons
             name={liked ? 'thumb-up' : 'thumb-up-off-alt'}
             size={23}
-            color={liked ? colors.like : colors.inkSoft}
+            color={liked ? accent.azure : colors.inkSoft}
           />
           {likeCount > 0 ? <Text style={[styles.actionCount, liked && styles.actionCountOn]}>{likeCount}</Text> : null}
         </TouchableOpacity>
@@ -1090,7 +1093,7 @@ export const PostCard: React.FC<PostCardProps> = ({
                 }}
                 ListEmptyComponent={
                   loadingComments ? (
-                    <ActivityIndicator style={styles.commentsLoading} color={colors.azure} />
+                    <ActivityIndicator style={styles.commentsLoading} color={accent.azure} />
                   ) : (
                     <Text style={styles.emptyComments}>No comments yet. Be the first!</Text>
                   )
@@ -1220,7 +1223,7 @@ export const PostCard: React.FC<PostCardProps> = ({
 const REACTION_HIT_SLOP = { top: 10, bottom: 10, left: 6, right: 6 };
 const OPTIONS_HIT_SLOP = { top: 12, bottom: 12, left: 12, right: 12 };
 
-const styles = StyleSheet.create({
+const useStyles = themedStyles((accent) => StyleSheet.create({
   /* The post card. It brings its own side margins, so a list of cards only needs the grey page behind it. */
   card: {
     marginHorizontal: GUTTER,
@@ -1235,12 +1238,12 @@ const styles = StyleSheet.create({
   metaLine: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 1 },
   metaSeparator: { color: colors.inkMuted, fontSize: 13 },
   groupBadgeBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, maxWidth: 170, minHeight: 20 },
-  groupBadge: { color: colors.azureText, fontSize: 13, fontWeight: '600', flexShrink: 1 },
+  groupBadge: { color: accent.azureText, fontSize: 13, fontWeight: '600', flexShrink: 1 },
   timeAgo: { color: colors.inkMuted, fontSize: 13 },
   optionsBtn: { width: TAP, height: TAP, alignItems: 'center', justifyContent: 'center' },
   content: { fontSize: 16, lineHeight: 23, color: colors.ink, paddingHorizontal: 16, paddingTop: 0, marginBottom: 10 },
   readMoreBtn: { paddingHorizontal: 16, marginTop: -6, marginBottom: 10, minHeight: 28, justifyContent: 'center' },
-  readMore: { color: colors.azureText, fontSize: 15, fontWeight: '500' },
+  readMore: { color: accent.azureText, fontSize: 15, fontWeight: '500' },
   linkPreviewCard: {
     marginHorizontal: 16,
     marginBottom: 12,
@@ -1253,7 +1256,7 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   linkPreviewTextWrap: { flex: 1 },
-  linkPreviewLabel: { fontSize: 12, color: colors.azureText, fontWeight: '600' },
+  linkPreviewLabel: { fontSize: 12, color: accent.azureText, fontWeight: '600' },
   linkPreviewTitle: { fontSize: 15, color: colors.ink, marginTop: 2, fontWeight: '600' },
   linkPreviewDescription: { fontSize: 13, color: colors.inkMuted, marginTop: 2 },
   linkPreviewHint: { fontSize: 13, color: colors.inkMuted, marginTop: 2 },
@@ -1296,7 +1299,7 @@ const styles = StyleSheet.create({
   commentTitle: { flex: 1, textAlign: 'center', fontSize: 17, fontWeight: '600', letterSpacing: -0.2, color: colors.ink },
   commentList: { paddingVertical: 6, flexGrow: 1 },
   commentItem: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, paddingHorizontal: 16, paddingVertical: 10 },
-  commentHighlighted: { backgroundColor: colors.azureTint },
+  commentHighlighted: { backgroundColor: accent.azureTint },
   commentBody: { flex: 1, minWidth: 0 },
   commentNameRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   commentOptionsBtn: { marginLeft: 'auto', paddingHorizontal: 2, paddingVertical: 2 },
@@ -1308,7 +1311,7 @@ const styles = StyleSheet.create({
   reactionItem: { flexDirection: 'row', alignItems: 'center', gap: 4, minWidth: 24, minHeight: 24 },
   reactionCount: { color: colors.inkMuted, fontSize: 13, fontWeight: '600' },
   replyAction: { minHeight: 24, justifyContent: 'center' },
-  replyActionText: { color: colors.azureText, fontSize: 14, fontWeight: '600' },
+  replyActionText: { color: accent.azureText, fontSize: 14, fontWeight: '600' },
   replyParent: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -1356,7 +1359,7 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: colors.azure,
+    backgroundColor: accent.azure,
   },
   sendBtnDisabled: { backgroundColor: colors.fill },
 
@@ -1400,4 +1403,4 @@ const styles = StyleSheet.create({
   viewerCount: { color: colors.white, fontSize: 15, fontWeight: '600', marginLeft: 6 },
   viewerPage: { width: SCREEN_WIDTH, justifyContent: 'center', alignItems: 'center' },
   viewerImage: { width: SCREEN_WIDTH, height: '100%' },
-});
+}));

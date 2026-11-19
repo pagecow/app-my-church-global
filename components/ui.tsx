@@ -13,11 +13,16 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import type { Accent } from '../lib/accent';
+import { useAccent } from '../lib/churchColor';
 import { colors, GUTTER, initialsOf, radius, TAP, text } from '../lib/theme';
 
 /**
  * The parts every screen is built from. Keep this file identical in both phone
  * apps (app-my-church-global and amc-central-community-church).
+ *
+ * Anything coloured takes the church's colour from `useAccent()`
+ * (lib/churchColor.ts), never a fixed blue.
  */
 
 export type IconName = React.ComponentProps<typeof Ionicons>['name'];
@@ -63,6 +68,7 @@ export function Tile({
   /** `contain` shows the whole picture: for a church's logo, which is rarely square. */
   fit?: 'cover' | 'contain';
 }) {
+  const accent = useAccent();
   const shape = { width: size, height: size, borderRadius: Math.round(size * 0.28) };
   if (uri) {
     return (
@@ -74,14 +80,14 @@ export function Tile({
     );
   }
   return (
-    <View style={[shape, styles.tileFallback, tinted && { backgroundColor: colors.azureTint }]}>
+    <View style={[shape, styles.tileFallback, tinted && { backgroundColor: accent.azureTint }]}>
       {icon ? (
-        <Ionicons name={icon} size={Math.round(size * 0.46)} color={tinted ? colors.azureTintText : colors.inkSoft} />
+        <Ionicons name={icon} size={Math.round(size * 0.46)} color={tinted ? accent.azureTintText : colors.inkSoft} />
       ) : (
         <Text
           style={[
             styles.tileText,
-            { fontSize: Math.round(size * 0.36), color: tinted ? colors.azureTintText : colors.inkSoft },
+            { fontSize: Math.round(size * 0.36), color: tinted ? accent.azureTintText : colors.inkSoft },
           ]}
         >
           {initialsOf(name)}
@@ -96,7 +102,7 @@ export function Tile({
 type ButtonKind = 'primary' | 'tinted' | 'plain' | 'quiet' | 'danger';
 
 /**
- * A full-width action. `primary` is the one main action of a screen (blue);
+ * A full-width action. `primary` is the one main action of a screen (the church's colour);
  * `tinted` is a second choice; `plain` is white, for use on the grey page;
  * `quiet` is grey, for use on a white card; `danger` is for deleting or leaving.
  */
@@ -127,7 +133,8 @@ export function Button({
   accessibilityHint?: string;
   accessibilityRole?: 'button' | 'link';
 }) {
-  const palette = BUTTON_COLORS[kind];
+  const accent = useAccent();
+  const palette = buttonColors(accent)[kind];
   const small = size === 'small';
   const iconSize = small ? 16 : 19;
   return (
@@ -166,13 +173,13 @@ export function Button({
 const SEGMENT_HIT_SLOP = { top: 4, bottom: 4 };
 const SMALL_BUTTON_HIT_SLOP = { top: 5, bottom: 5, left: 4, right: 4 };
 
-const BUTTON_COLORS: Record<ButtonKind, { bg: string; fg: string }> = {
-  primary: { bg: colors.azure, fg: colors.white },
-  tinted: { bg: colors.azureTint, fg: colors.azureTintText },
-  plain: { bg: colors.card, fg: colors.azureText },
+const buttonColors = (accent: Accent): Record<ButtonKind, { bg: string; fg: string }> => ({
+  primary: { bg: accent.azure, fg: colors.white },
+  tinted: { bg: accent.azureTint, fg: accent.azureTintText },
+  plain: { bg: colors.card, fg: accent.azureText },
   quiet: { bg: colors.fillSoft, fg: colors.ink },
   danger: { bg: colors.redTint, fg: colors.red },
-};
+});
 
 /** A round icon button. The visible circle is smaller than the area that takes the tap. */
 export function CircleButton({
@@ -190,9 +197,10 @@ export function CircleButton({
   accessibilityLabel: string;
   style?: StyleProp<ViewStyle>;
 }) {
+  const accent = useAccent();
   const palette =
     kind === 'accent'
-      ? { bg: colors.azure, fg: colors.white }
+      ? { bg: accent.azure, fg: colors.white }
       : kind === 'floating'
       ? { bg: colors.card, fg: colors.ink }
       : kind === 'dark'
@@ -229,9 +237,10 @@ export function Chip({
   kind?: 'neutral' | 'accent' | 'success' | 'danger';
   icon?: IconName;
 }) {
+  const accent = useAccent();
   const palette =
     kind === 'accent'
-      ? { bg: colors.azureTint, fg: colors.azureTintText }
+      ? { bg: accent.azureTint, fg: accent.azureTintText }
       : kind === 'success'
       ? { bg: colors.greenTint, fg: colors.green }
       : kind === 'danger'
@@ -304,6 +313,7 @@ export function HeaderAction({
   loading?: boolean;
   bold?: boolean;
 }) {
+  const accent = useAccent();
   return (
     <TouchableOpacity
       onPress={onPress}
@@ -313,11 +323,12 @@ export function HeaderAction({
       style={styles.headerAction}
     >
       {loading ? (
-        <ActivityIndicator color={colors.azure} />
+        <ActivityIndicator color={accent.azure} />
       ) : (
         <Text
           style={[
             styles.headerActionText,
+            { color: accent.azureText },
             bold ? { fontWeight: '600' } : null,
             disabled ? { color: colors.inkFaint } : null,
           ]}
@@ -449,9 +460,10 @@ export function EmptyState({
 
 /** A full-screen spinner while a screen loads. */
 export function Loading({ style }: { style?: StyleProp<ViewStyle> }) {
+  const accent = useAccent();
   return (
     <View style={[styles.loading, style]}>
-      <ActivityIndicator size="large" color={colors.azure} />
+      <ActivityIndicator size="large" color={accent.azure} />
     </View>
   );
 }
@@ -470,13 +482,14 @@ export function Notice({
   onAction?: () => void;
   style?: StyleProp<ViewStyle>;
 }) {
+  const accent = useAccent();
   const danger = kind === 'danger';
   return (
     <View style={[styles.notice, { backgroundColor: danger ? colors.redTint : colors.fill }, style]}>
       <Text style={[styles.noticeText, { color: danger ? colors.red : colors.inkSoft }]}>{message}</Text>
       {actionLabel ? (
         <TouchableOpacity onPress={onAction} accessibilityRole="button" style={styles.noticeAction}>
-          <Text style={[styles.noticeActionText, { color: danger ? colors.red : colors.azureText }]}>
+          <Text style={[styles.noticeActionText, { color: danger ? colors.red : accent.azureText }]}>
             {actionLabel}
           </Text>
         </TouchableOpacity>
@@ -582,7 +595,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
   },
   headerAction: { minHeight: TAP, minWidth: TAP, paddingHorizontal: 8, justifyContent: 'center' },
-  headerActionText: { fontSize: 17, color: colors.azureText },
+  headerActionText: { fontSize: 17 },
 
   sheetHeader: {
     flexDirection: 'row',

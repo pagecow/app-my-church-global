@@ -16,11 +16,14 @@ import { useAuth } from '../context/AuthContext';
 import { useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Button, StackHeader, Tile } from '../components/ui';
-import { colors, GUTTER, shapes, TAP, text } from '../lib/theme';
+import { themedStyles, useAccent } from '../lib/churchColor';
+import { colors, GUTTER, linkText, shapes, TAP, text } from '../lib/theme';
 
 const LOGO_SIZE = 88;
 
 export default function LoginScreen() {
+  const accent = useAccent();
+  const styles = useStyles();
   const { height } = useWindowDimensions();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -125,7 +128,7 @@ export default function LoginScreen() {
           <Button label="Login" onPress={handleLogin} loading={isLoggingIn} style={styles.submit} />
 
           <TouchableOpacity onPress={handleForgotPassword} style={styles.link} accessibilityRole="button">
-            <Text style={text.link}>Forgot Password?</Text>
+            <Text style={linkText(accent)}>Forgot Password?</Text>
           </TouchableOpacity>
 
           <TouchableOpacity onPress={() => router.push('/signup')} style={styles.link} accessibilityRole="button">
@@ -137,7 +140,7 @@ export default function LoginScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = themedStyles((accent) => StyleSheet.create({
   scrollContent: {
     flexGrow: 1,
     paddingHorizontal: GUTTER,
@@ -190,7 +193,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   switchBold: {
-    color: colors.azureText,
+    color: accent.azureText,
     fontWeight: '600',
   },
-});
+}));

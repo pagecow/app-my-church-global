@@ -7,7 +7,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import axios from 'axios';
 import * as ImagePicker from 'expo-image-picker';
 import { Avatar, Button, StackHeader } from '../components/ui';
-import { colors, GUTTER, shapes, TAP, text } from '../lib/theme';
+import { useAccent } from '../lib/churchColor';
+import { colors, GUTTER, linkText, shapes, TAP, text } from '../lib/theme';
 
 const API_URL = 'https://appmychurch.com/api/v1';
 
@@ -15,6 +16,7 @@ const AVATAR_SIZE = 112;
 const ROW_PADDING = 16;
 
 export default function ProfileScreen() {
+  const accent = useAccent();
   const { user, token, refreshUser, logout } = useAuth();
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -170,10 +172,10 @@ export default function ProfileScreen() {
                 style={styles.textAction}
                 accessibilityRole="button"
               >
-                <Text style={text.link}>Change photo</Text>
+                <Text style={linkText(accent)}>Change photo</Text>
               </TouchableOpacity>
               <TouchableOpacity onPress={handleRemovePhoto} style={styles.textAction} accessibilityRole="button">
-                <Text style={[text.link, styles.removePhotoText]}>Remove</Text>
+                <Text style={[linkText(accent), styles.removePhotoText]}>Remove</Text>
               </TouchableOpacity>
             </View>
           ) : (
@@ -183,7 +185,7 @@ export default function ProfileScreen() {
               style={styles.textAction}
               accessibilityRole="button"
             >
-              <Text style={text.link}>{isUploading ? 'Uploading...' : 'Add profile picture'}</Text>
+              <Text style={linkText(accent)}>{isUploading ? 'Uploading...' : 'Add profile picture'}</Text>
             </TouchableOpacity>
           )}
         </View>
@@ -230,7 +232,7 @@ export default function ProfileScreen() {
               style={styles.textAction}
               accessibilityRole="button"
             >
-              <Text style={text.link}>Cancel</Text>
+              <Text style={linkText(accent)}>Cancel</Text>
             </TouchableOpacity>
           </View>
         ) : null}

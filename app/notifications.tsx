@@ -6,6 +6,7 @@ import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
 import { EmptyState, Loading, StackHeader } from '../components/ui';
+import { themedStyles } from '../lib/churchColor';
 import { colors, GUTTER, radius, shapes, text } from '../lib/theme';
 import { notificationTarget, parsePushData } from '../lib/notifications';
 
@@ -57,6 +58,7 @@ const stripHtml = (html: string) => {
  * what broke the bell.
  */
 export default function NotificationsScreen() {
+  const styles = useStyles();
   const { token, user } = useAuth();
   const router = useRouter();
   const [notifications, setNotifications] = useState<any[]>([]);
@@ -151,6 +153,7 @@ export default function NotificationsScreen() {
 
 /** The line between two rows. It sits on white so the block of rows stays one piece. */
 function RowDivider() {
+  const styles = useStyles();
   return (
     <View style={styles.dividerWrap}>
       <View style={[shapes.divider, styles.dividerLine]} />
@@ -161,7 +164,7 @@ function RowDivider() {
 const DOT = 10;
 const ROW_GAP = 12;
 
-const styles = StyleSheet.create({
+const useStyles = themedStyles((accent) => StyleSheet.create({
   listContent: { paddingHorizontal: GUTTER, paddingTop: 4, paddingBottom: 24 },
   row: {
     flexDirection: 'row',
@@ -176,7 +179,7 @@ const styles = StyleSheet.create({
   rowFirst: { borderTopLeftRadius: radius.group, borderTopRightRadius: radius.group },
   rowLast: { borderBottomLeftRadius: radius.group, borderBottomRightRadius: radius.group },
   /* Lined up with the middle of the title's first line. */
-  dot: { width: DOT, height: DOT, borderRadius: DOT / 2, backgroundColor: colors.azure, marginTop: 6 },
+  dot: { width: DOT, height: DOT, borderRadius: DOT / 2, backgroundColor: accent.azure, marginTop: 6 },
   rowText: { flex: 1, minWidth: 0, gap: 3 },
   rowTop: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
   rowTitle: { flex: 1 },
@@ -184,4 +187,4 @@ const styles = StyleSheet.create({
   chevron: { marginTop: 2 },
   dividerWrap: { backgroundColor: colors.card },
   dividerLine: { marginLeft: 16 + DOT + ROW_GAP },
-});
+}));

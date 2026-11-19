@@ -20,6 +20,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { GroupLabel, SegmentedControl, SheetHeader } from './ui';
+import { themedStyles, useAccent } from '../lib/churchColor';
 import { colors, GUTTER, radius, shapes, text } from '../lib/theme';
 import {
   describeRepeat,
@@ -79,6 +80,8 @@ export default function EventFormSheet({
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const accent = useAccent();
+  const styles = useStyles();
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [location, setLocation] = useState('');
@@ -278,7 +281,7 @@ export default function EventFormSheet({
           mode={mode}
           display="compact"
           themeVariant="light"
-          accentColor={colors.azure}
+          accentColor={accent.azure}
           minimumDate={field === 'endDate' ? startDate : undefined}
           onChange={(_, picked) => {
             if (picked) applyPicked(field, picked);
@@ -361,7 +364,7 @@ export default function EventFormSheet({
               <Switch
                 value={allDay}
                 onValueChange={setAllDay}
-                trackColor={{ true: colors.azure, false: colors.fill }}
+                trackColor={{ true: accent.azure, false: colors.fill }}
                 accessibilityLabel="All day"
               />
             </View>
@@ -403,7 +406,7 @@ export default function EventFormSheet({
                       accessibilityLabel={option.label}
                     >
                       <Text style={[styles.rowLabel, on ? styles.rowLabelOn : null]}>{option.label}</Text>
-                      {on ? <Ionicons name="checkmark" size={22} color={colors.azure} /> : null}
+                      {on ? <Ionicons name="checkmark" size={22} color={accent.azure} /> : null}
                     </TouchableOpacity>
                   </React.Fragment>
                 );
@@ -429,7 +432,7 @@ export default function EventFormSheet({
             {previewUri ? <Image source={{ uri: previewUri }} style={styles.preview} /> : null}
             <TouchableOpacity style={styles.row} onPress={pickEventImage} accessibilityRole="button">
               <View style={styles.photoRow}>
-                <Ionicons name="image-outline" size={22} color={colors.azureText} />
+                <Ionicons name="image-outline" size={22} color={accent.azureText} />
                 <Text style={styles.photoText}>{previewUri ? 'Change photo' : 'Add a photo'}</Text>
               </View>
             </TouchableOpacity>
@@ -462,7 +465,7 @@ export default function EventFormSheet({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = themedStyles((accent) => StyleSheet.create({
   body: { paddingHorizontal: GUTTER, paddingTop: 8, paddingBottom: 60, gap: 22 },
   field: { minHeight: 52, paddingHorizontal: 16, paddingVertical: 14, fontSize: 17, color: colors.ink },
   fieldTitle: { fontWeight: '600' },
@@ -492,6 +495,6 @@ const styles = StyleSheet.create({
   helper: { ...text.footnote, marginTop: 8, marginHorizontal: GUTTER },
   preview: { width: '100%', height: 180, backgroundColor: colors.fillSoft },
   photoRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  photoText: { fontSize: 17, color: colors.azureText },
+  photoText: { fontSize: 17, color: accent.azureText },
   removeText: { fontSize: 17, color: colors.red },
-});
+}));

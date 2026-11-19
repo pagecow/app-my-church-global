@@ -3,13 +3,13 @@
     "name": "Church App",
     "slug": "app-my-church-global",
     "scheme": "appmychurch",
-    "version": "1.5.1",
+    "version": "1.5.2",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": true,
-      "buildNumber": "1.5.1",
+      "buildNumber": "1.5.2",
       "bundleIdentifier": "com.amc.appmychurchglobal",
       "entitlements": {
         "com.apple.developer.declared-age-range": true
@@ -28,7 +28,7 @@
       },
       "package": "com.amc.appmychurchglobal",
       "googleServicesFile": "./google-services.json",
-      "versionCode": 27,
+      "versionCode": 28,
       "permissions": [
         "CAMERA",
         "RECORD_AUDIO",

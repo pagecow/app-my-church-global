@@ -26,7 +26,8 @@ import * as ImagePicker from 'expo-image-picker';
 import Navbar from '../../components/Navbar';
 import { Button, EmptyState, GroupLabel, Loading, SheetHeader } from '../../components/ui';
 import { useAuth } from '../../context/AuthContext';
-import { CARD_GAP, colors, GUTTER, radius, shapes, TAP, text } from '../../lib/theme';
+import { themedStyles, useAccent } from '../../lib/churchColor';
+import { CARD_GAP, colors, GUTTER, linkText, radius, shapes, TAP, text } from '../../lib/theme';
 
 const DIRECT_MEDIA_REGEX = /\.(mp4|m4v|mov|webm|m3u8|mp3|m4a|aac|wav|ogg)(\?.*)?$/i;
 const isDirectMediaUrl = (url: string) => DIRECT_MEDIA_REGEX.test(url.trim());
@@ -182,6 +183,8 @@ function ManagedVideoPlayer({
 }
 
 export default function VideosScreen() {
+  const accent = useAccent();
+  const styles = useStyles();
   const { token, user } = useAuth();
   const insets = useSafeAreaInsets();
   const [videos, setVideos] = useState<VideoItem[]>([]);
@@ -572,7 +575,7 @@ export default function VideosScreen() {
     <>
       {isLoadingMore && (
         <View style={styles.footerLoader}>
-          <ActivityIndicator size="small" color={colors.azure} />
+          <ActivityIndicator size="small" color={accent.azure} />
           <Text style={styles.footerText}>Loading more videos...</Text>
         </View>
       )}
@@ -646,7 +649,7 @@ export default function VideosScreen() {
           {activeVideo?.mediaUrl && (
             isAudio(activeVideo) ? (
               <View style={styles.audioContainer}>
-                <Ionicons name="musical-notes" size={80} color={colors.azure} />
+                <Ionicons name="musical-notes" size={80} color={accent.azure} />
                 <ManagedVideoPlayer uri={activeVideo.mediaUrl} style={styles.audioPlayer} shouldPlay />
               </View>
             ) : (
@@ -703,7 +706,7 @@ export default function VideosScreen() {
             />
             {isFetchingMetadata ? (
               <View style={styles.metaLoadingRow}>
-                <ActivityIndicator size="small" color={colors.azure} />
+                <ActivityIndicator size="small" color={accent.azure} />
                 <Text style={text.footnote}>Fetching link metadata...</Text>
               </View>
             ) : null}
@@ -797,7 +800,7 @@ export default function VideosScreen() {
                   <Text style={[styles.pickerOptionText, !newPlaylistId && styles.pickerOptionTextActive]}>
                     None
                   </Text>
-                  {!newPlaylistId ? <Ionicons name="checkmark" size={20} color={colors.azure} /> : null}
+                  {!newPlaylistId ? <Ionicons name="checkmark" size={20} color={accent.azure} /> : null}
                 </TouchableOpacity>
                 {playlists.map((pl) => (
                   <React.Fragment key={pl.id}>
@@ -811,7 +814,7 @@ export default function VideosScreen() {
                       <Text style={[styles.pickerOptionText, newPlaylistId === pl.id && styles.pickerOptionTextActive]}>
                         {pl.name}
                       </Text>
-                      {newPlaylistId === pl.id ? <Ionicons name="checkmark" size={20} color={colors.azure} /> : null}
+                      {newPlaylistId === pl.id ? <Ionicons name="checkmark" size={20} color={accent.azure} /> : null}
                     </TouchableOpacity>
                   </React.Fragment>
                 ))}
@@ -834,6 +837,7 @@ function PlaylistPill({
   selected: boolean;
   onPress: () => void;
 }) {
+  const styles = useStyles();
   return (
     <TouchableOpacity
       style={styles.pillHit}
@@ -852,7 +856,7 @@ function PlaylistPill({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = themedStyles((accent) => StyleSheet.create({
   // A horizontal scroll view in a column gives up height to the list below it
   // unless told not to, which cut the bottom off the pills.
   pillScroll: { flexGrow: 0, flexShrink: 0, minHeight: TAP + 2 },
@@ -948,7 +952,7 @@ const styles = StyleSheet.create({
   previewCard: { marginTop: CARD_GAP },
   previewImage: { width: '100%', height: 180 },
   removeAttachmentBtn: { minHeight: TAP, alignItems: 'center', justifyContent: 'center' },
-  removeAttachmentText: { ...text.link, color: colors.red },
+  removeAttachmentText: { ...linkText(accent), color: colors.red },
   deleteBtn: { marginTop: 28 },
 
   pickerOverlay: {
@@ -978,4 +982,4 @@ const styles = StyleSheet.create({
   pickerOptionText: { ...text.body, flex: 1 },
   pickerOptionTextActive: { fontWeight: '600' },
   pickerDivider: { marginLeft: 20 },
-});
+}));

@@ -17,6 +17,7 @@ import EventDetailSheet from '../../components/EventDetailSheet';
 import EventFormSheet from '../../components/EventFormSheet';
 import { Chip, EmptyState, Loading, SectionTitle, SegmentedControl } from '../../components/ui';
 import { useAuth } from '../../context/AuthContext';
+import { themedStyles, useAccent } from '../../lib/churchColor';
 import { colors, GUTTER, shapes, TAP, text } from '../../lib/theme';
 import {
   buildMonth,
@@ -46,6 +47,8 @@ const WEEKDAY_LETTERS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 type ViewMode = 'upcoming' | 'calendar';
 
 export default function EventsScreen() {
+  const accent = useAccent();
+  const styles = useStyles();
   const { token, user } = useAuth();
   const isAdmin = Boolean(user?.is_admin);
 
@@ -293,7 +296,7 @@ export default function EventsScreen() {
                     accessibilityRole="button"
                     accessibilityLabel="Previous month"
                   >
-                    <Ionicons name="chevron-back" size={22} color={colors.azure} />
+                    <Ionicons name="chevron-back" size={22} color={accent.azure} />
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={styles.monthArrow}
@@ -301,7 +304,7 @@ export default function EventsScreen() {
                     accessibilityRole="button"
                     accessibilityLabel="Next month"
                   >
-                    <Ionicons name="chevron-forward" size={22} color={colors.azure} />
+                    <Ionicons name="chevron-forward" size={22} color={accent.azure} />
                   </TouchableOpacity>
                 </View>
 
@@ -432,8 +435,9 @@ function dayRowMeta(event: EventItem): string {
   return [event.location, repeatLabelShort(event)].filter(Boolean).join(' · ');
 }
 
-/** The month and day in a small rounded square. Today's is filled blue. */
+/** The month and day in a small rounded square. Today's is filled with the church's colour. */
 function DateTile({ day, isToday }: { day: Date | null; isToday: boolean }) {
+  const styles = useStyles();
   if (!day) {
     return (
       <View style={styles.tile}>
@@ -453,6 +457,7 @@ function DateTile({ day, isToday }: { day: Date | null; isToday: boolean }) {
 
 /** The right-hand side of a row: how often it repeats, or this person's answer. */
 function RowTrailing({ event, userId }: { event: EventItem; userId?: string | null }) {
+  const styles = useStyles();
   if (isRepeating(event)) {
     return (
       <View style={styles.repeat}>
@@ -467,7 +472,7 @@ function RowTrailing({ event, userId }: { event: EventItem; userId?: string | nu
   return <Chip label="RSVP" kind="accent" />;
 }
 
-const styles = StyleSheet.create({
+const useStyles = themedStyles((accent) => StyleSheet.create({
   switcher: { marginHorizontal: GUTTER, marginTop: 4 },
   content: { paddingHorizontal: GUTTER, paddingBottom: 32 },
 
@@ -482,8 +487,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  tileToday: { backgroundColor: colors.azure },
-  tileMonth: { fontSize: 10.5, fontWeight: '700', letterSpacing: 0.5, color: colors.azureText },
+  tileToday: { backgroundColor: accent.azure },
+  tileMonth: { fontSize: 10.5, fontWeight: '700', letterSpacing: 0.5, color: accent.azureText },
   tileDay: { fontSize: 20, lineHeight: 23, fontWeight: '700', color: colors.ink },
   tileOnToday: { color: colors.white },
   repeat: { flexDirection: 'row', alignItems: 'center', gap: 4 },
@@ -498,18 +503,18 @@ const styles = StyleSheet.create({
   grid: { flexDirection: 'row', flexWrap: 'wrap' },
   cell: { width: `${100 / 7}%`, height: 50, alignItems: 'center', gap: 3 },
   dayCircle: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
-  daySelected: { backgroundColor: colors.azureTint },
-  dayToday: { backgroundColor: colors.azure },
+  daySelected: { backgroundColor: accent.azureTint },
+  dayToday: { backgroundColor: accent.azure },
   dayNumber: { fontSize: 17, color: colors.ink },
-  dayNumberSelected: { fontWeight: '700', color: colors.azureTintText },
+  dayNumberSelected: { fontWeight: '700', color: accent.azureTintText },
   dayNumberToday: { fontWeight: '700', color: colors.white },
   dots: { flexDirection: 'row', gap: 3, height: 5 },
-  dot: { width: 5, height: 5, borderRadius: 2.5, backgroundColor: colors.azure },
+  dot: { width: 5, height: 5, borderRadius: 2.5, backgroundColor: accent.azure },
 
   dayTitle: { marginTop: 18, marginBottom: 8 },
   dayRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, paddingLeft: 14, paddingRight: 12, minHeight: 60 },
   dayRowDivider: { marginLeft: 14 },
-  dayRowTime: { width: 72, fontSize: 14, fontWeight: '600', color: colors.azureText },
+  dayRowTime: { width: 72, fontSize: 14, fontWeight: '600', color: accent.azureText },
   nothing: { paddingVertical: 20, paddingHorizontal: 16 },
   nothingText: { ...text.secondary, fontSize: 15, textAlign: 'center' },
-});
+}));

@@ -1,12 +1,19 @@
 import { Platform, StyleSheet, TextStyle, ViewStyle } from 'react-native';
+import type { Accent } from './accent';
 
 /**
  * The one place the app's look is decided.
  *
- * The colours are the website's palette (ink / mist / hairline / azure in
+ * The colours are the website's palette (ink / mist / hairline in
  * app-my-church/tailwind.config.js) so the app, the dashboard and the site read
  * as one product. Screens take colours, text sizes and shapes from here: a
  * colour written directly in a screen is a mistake.
+ *
+ * The one accent colour is NOT here. It is the church's own colour (or the
+ * standard blue when the church has not picked one), so it can change while the
+ * app runs. A screen gets it from lib/churchColor.ts: `useAccent()` for the four
+ * shades (azure, azureText, azureTint, azureTintText), `themedStyles(...)` for a
+ * StyleSheet that needs them. lib/accent.ts works the shades out.
  *
  * Keep this file identical in both phone apps (app-my-church-global and
  * amc-central-community-church).
@@ -32,20 +39,16 @@ export const colors = {
   /** The small handle at the top of a sheet that slides up. */
   grabber: '#c7c7cc',
 
-  /** The one accent. `azureText` is the shade for blue text on white or `page`. */
-  azure: '#0071e3',
-  azureText: '#0066cc',
-  azureTint: '#e6f0fc',
-  azureTintText: '#0058b0',
-
   /** Meaning, never decoration. */
   red: '#d70015',
   redTint: '#fdecee',
   green: '#1a6b31',
   greenTint: '#e4f3e8',
 
-  /** A reaction keeps its own colour once tapped, so it is recognised at a glance. */
-  like: '#0071e3',
+  /**
+   * A reaction keeps its own colour once tapped, so it is recognised at a glance.
+   * A like takes the church's colour (`accent.azure`), so it is not listed here.
+   */
   love: '#e0364f',
   pray: '#f0a020',
 
@@ -104,7 +107,6 @@ export const text = StyleSheet.create({
   label: { fontSize: 13, lineHeight: 18, fontWeight: '600', letterSpacing: 0.3, color: colors.inkMuted },
   button: { fontSize: 17, lineHeight: 22, fontWeight: '600' },
   buttonSmall: { fontSize: 14, lineHeight: 18, fontWeight: '600' },
-  link: { fontSize: 16, lineHeight: 22, fontWeight: '500', color: colors.azureText },
 }) as Record<
   | 'largeTitle'
   | 'title'
@@ -116,10 +118,17 @@ export const text = StyleSheet.create({
   | 'footnote'
   | 'label'
   | 'button'
-  | 'buttonSmall'
-  | 'link',
+  | 'buttonSmall',
   TextStyle
 >;
+
+/** Words that can be tapped: "Forgot Password?", "Change photo". In the church's colour. */
+export const linkText = (accent: Accent): TextStyle => ({
+  fontSize: 16,
+  lineHeight: 22,
+  fontWeight: '500',
+  color: accent.azureText,
+});
 
 /** Shapes several screens share. */
 export const shapes = StyleSheet.create({

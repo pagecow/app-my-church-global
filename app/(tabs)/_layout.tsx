@@ -5,6 +5,7 @@ import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from '../../context/AuthContext';
+import { useAccent } from '../../lib/churchColor';
 import { colors } from '../../lib/theme';
 
 type IoniconName = React.ComponentProps<typeof Ionicons>['name'];
@@ -19,6 +20,7 @@ const tabIcon =
     <Ionicons name={focused ? on : off} size={25} color={color as string} />;
 
 export default function TabLayout() {
+  const accent = useAccent();
   const router = useRouter();
   const { token, isLoading, isLoggingOut, features, locked } = useAuth();
 
@@ -50,7 +52,7 @@ export default function TabLayout() {
     <Tabs
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: colors.azure,
+        tabBarActiveTintColor: accent.azure,
         tabBarInactiveTintColor: colors.inkMuted,
         tabBarStyle: styles.tabBar,
         tabBarLabelStyle: styles.tabLabel,

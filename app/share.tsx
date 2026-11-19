@@ -6,9 +6,11 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Clipboard from 'expo-clipboard';
 import QRCode from 'react-native-qrcode-svg';
 import { Button, StackHeader } from '../components/ui';
+import { themedStyles } from '../lib/churchColor';
 import { CARD_GAP, colors, GUTTER, shapes, text } from '../lib/theme';
 
 export default function ShareScreen() {
+  const styles = useStyles();
   const { appData } = useAuth();
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -69,7 +71,7 @@ export default function ShareScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = themedStyles((accent) => StyleSheet.create({
   scrollContent: {
     width: '100%',
     maxWidth: 560,
@@ -82,6 +84,6 @@ const styles = StyleSheet.create({
   qrLabel: { ...text.body, color: colors.inkMuted, textAlign: 'center', marginTop: 16 },
   messageCard: { padding: 20 },
   shareBody: { ...text.body, color: colors.inkSoft, marginTop: 8 },
-  link: { color: colors.azureText },
+  link: { color: accent.azureText },
   copyBtn: { marginTop: 20 },
-});
+}));

@@ -8,7 +8,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Button, CodeHelp, StackHeader, Tile } from '../components/ui';
-import { colors, GUTTER, shapes, TAP, text } from '../lib/theme';
+import { themedStyles, useAccent } from '../lib/churchColor';
+import { colors, GUTTER, linkText, shapes, TAP, text } from '../lib/theme';
 
 const API_URL = 'https://appmychurch.com/api/v1';
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -17,6 +18,8 @@ const PASSWORD_REGEX = /^(?=.*[A-Za-z])(?=.*\d).{6,}$/;
 const LOGO_SIZE = 88;
 
 export default function SignupScreen() {
+  const accent = useAccent();
+  const styles = useStyles();
   const { height } = useWindowDimensions();
   const defaultPickerDate = new Date(2000, 0, 1);
   const [name, setName] = useState('');
@@ -293,7 +296,7 @@ export default function SignupScreen() {
                 <Ionicons
                   name={agreedToTerms ? 'checkbox' : 'square-outline'}
                   size={26}
-                  color={agreedToTerms ? colors.azure : colors.inkFaint}
+                  color={agreedToTerms ? accent.azure : colors.inkFaint}
                 />
                 <Text style={styles.termsText}>
                   I agree to the{' '}
@@ -331,7 +334,7 @@ export default function SignupScreen() {
                 </View>
               ) : (
                 <TouchableOpacity onPress={handleResend} style={styles.link} accessibilityRole="button">
-                  <Text style={text.link}>Resend Code</Text>
+                  <Text style={linkText(accent)}>Resend Code</Text>
                 </TouchableOpacity>
               )}
 
@@ -344,7 +347,7 @@ export default function SignupScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = themedStyles((accent) => StyleSheet.create({
   scroll: { flexGrow: 1, paddingHorizontal: GUTTER, paddingTop: 12 },
   column: { width: '100%', maxWidth: 440, alignSelf: 'center' },
   brand: { alignItems: 'center', marginBottom: 12 },
@@ -372,13 +375,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  eyeText: { ...text.link, fontSize: 15 },
+  eyeText: { ...linkText(accent), fontSize: 15 },
   genderRow: { flexDirection: 'row', gap: 10 },
   // Both sit on the field shape (`shapes.input`), so they line up with the text fields.
   genderBtn: { flex: 1, paddingVertical: 0, alignItems: 'center', justifyContent: 'center' },
-  genderActive: { backgroundColor: colors.azureTint },
+  genderActive: { backgroundColor: accent.azureTint },
   genderText: { fontSize: 17, color: colors.ink },
-  genderTextActive: { color: colors.azureTintText, fontWeight: '600' },
+  genderTextActive: { color: accent.azureTintText, fontWeight: '600' },
   pickerField: {
     paddingVertical: 0,
     flexDirection: 'row',
@@ -390,14 +393,14 @@ const styles = StyleSheet.create({
   pickerPlaceholder: { color: colors.inkFaint },
   pickerContainer: { marginTop: 8 },
   pickerDoneBtn: { minHeight: TAP, alignItems: 'center', justifyContent: 'center' },
-  pickerDoneText: { ...text.link, fontSize: 17, fontWeight: '600' },
+  pickerDoneText: { ...linkText(accent), fontSize: 17, fontWeight: '600' },
   termsRow: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: TAP, marginTop: 16 },
   termsText: { ...text.secondary, flex: 1, color: colors.inkSoft },
-  termsLink: { color: colors.azureText, fontWeight: '600' },
+  termsLink: { color: accent.azureText, fontWeight: '600' },
   submit: { marginTop: 24 },
   link: { minHeight: TAP, marginTop: 8, alignItems: 'center', justifyContent: 'center' },
   switchText: { ...text.body, color: colors.inkMuted, textAlign: 'center' },
-  switchBold: { color: colors.azureText, fontWeight: '600' },
+  switchBold: { color: accent.azureText, fontWeight: '600' },
   otpInput: { minHeight: 64, fontSize: 28, letterSpacing: 8, fontWeight: '700', textAlign: 'center' },
   resendText: { ...text.secondary, textAlign: 'center' },
-});
+}));

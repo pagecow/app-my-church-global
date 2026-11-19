@@ -16,13 +16,15 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
 import { Button, CodeHelp, StackHeader, Tile } from '../components/ui';
-import { colors, GUTTER, shapes, TAP, text } from '../lib/theme';
+import { useAccent } from '../lib/churchColor';
+import { colors, GUTTER, linkText, shapes, TAP, text } from '../lib/theme';
 
 type Step = 'email' | 'otp' | 'password';
 
 const LOGO_SIZE = 88;
 
 export default function ForgotPasswordScreen() {
+  const accent = useAccent();
   const { height } = useWindowDimensions();
   const router = useRouter();
   const params = useLocalSearchParams<{ email?: string }>();
@@ -244,7 +246,7 @@ export default function ForgotPasswordScreen() {
                 disabled={isLoading}
                 accessibilityRole="button"
               >
-                <Text style={text.link}>Resend Code</Text>
+                <Text style={linkText(accent)}>Resend Code</Text>
               </TouchableOpacity>
               <CodeHelp email={email} onFixEmail={fixEmail} />
             </>
