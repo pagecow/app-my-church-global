@@ -26,7 +26,7 @@ const ROW_GAP = 12;
 
 export default function FindChurchScreen() {
   const [search, setSearch] = useState('');
-  const [churches, setChurches] = useState([]);
+  const [churches, setChurches] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
   const insets = useSafeAreaInsets();

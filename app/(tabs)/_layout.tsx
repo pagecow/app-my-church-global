@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { StyleSheet } from 'react-native';
+import { StyleSheet, type ColorValue } from 'react-native';
 import { Redirect, Tabs } from 'expo-router';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -12,7 +12,7 @@ type IoniconName = React.ComponentProps<typeof Ionicons>['name'];
 /** The filled icon marks the tab you are on; the outline is every other tab. */
 const tabIcon =
   (on: IoniconName, off: IoniconName) =>
-  ({ color, focused }: { color: string; focused: boolean }) =>
+  ({ color, focused }: { color: ColorValue; focused: boolean }) =>
     <Ionicons name={focused ? on : off} size={25} color={color} />;
 
 export default function TabLayout() {

@@ -251,7 +251,7 @@ const styles = StyleSheet.create({
   },
   photoSection: { alignItems: 'center', marginBottom: 16 },
   uploadOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: colors.scrim,
     borderRadius: AVATAR_SIZE / 2,
     justifyContent: 'center',
