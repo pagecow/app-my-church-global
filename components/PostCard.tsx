@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Alert, StyleSheet, View, Text, Image, TouchableOpacity, Pressable, Modal, FlatList, TextInput, Platform, Keyboard, Dimensions, Linking, ActivityIndicator } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { VideoView, useVideoPlayer } from 'expo-video';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -8,10 +8,13 @@ import axios from 'axios';
 import { Avatar, Button, CircleButton } from './ui';
 import { CARD_GAP, colors, GUTTER, radius, TAP } from '../lib/theme';
 
-// The app's own praying-hands artwork. It is drawn in one colour on a clear
-// background, so `tintColor` can recolour it: grey until tapped, gold after.
-const prayingHandFilled = require('../assets/prayingHand.png');
-const prayingHandOutline = require('../assets/prayingHandOutline.png');
+// The app's own praying-hands artwork, already trimmed, sized and coloured
+// (made from assets/prayingHand*.png). They are NOT recoloured with `tintColor`:
+// on iPhone the icon vanished when a tinted image changed, and never drew at all
+// in the comments sheet.
+const prayOutline = require('../assets/pray-outline-ink.png');
+const prayOutlineSmall = require('../assets/pray-outline-muted.png');
+const prayFilled = require('../assets/pray-filled-gold.png');
 
 interface PostCardProps {
   post: any;
@@ -755,9 +758,9 @@ export const PostCard: React.FC<PostCardProps> = ({
           accessibilityLabel={`Like, ${likes}`}
           accessibilityState={{ selected: !!isLiked }}
         >
-          <Ionicons
-            name={isLiked ? 'thumbs-up' : 'thumbs-up-outline'}
-            size={18}
+          <MaterialIcons
+            name={isLiked ? 'thumb-up' : 'thumb-up-off-alt'}
+            size={19}
             color={isLiked ? colors.like : colors.inkMuted}
           />
           {likes > 0 ? <Text style={styles.reactionCount}>{likes}</Text> : null}
@@ -785,9 +788,11 @@ export const PostCard: React.FC<PostCardProps> = ({
           accessibilityLabel={`Praying, ${prays}`}
           accessibilityState={{ selected: !!isPrayed }}
         >
+          {/* The key makes a fresh image when the state flips, instead of changing one in place. */}
           <Image
-            source={isPrayed ? prayingHandFilled : prayingHandOutline}
-            style={[styles.prayIconSmall, { tintColor: isPrayed ? colors.pray : colors.inkMuted }]}
+            key={isPrayed ? 'praying' : 'not-praying'}
+            source={isPrayed ? prayFilled : prayOutlineSmall}
+            style={styles.prayIconSmall}
           />
           {prays > 0 ? <Text style={styles.reactionCount}>{prays}</Text> : null}
         </TouchableOpacity>
@@ -933,9 +938,9 @@ export const PostCard: React.FC<PostCardProps> = ({
           accessibilityLabel={`Like, ${likeCount}`}
           accessibilityState={{ selected: liked }}
         >
-          <Ionicons
-            name={liked ? 'thumbs-up' : 'thumbs-up-outline'}
-            size={22}
+          <MaterialIcons
+            name={liked ? 'thumb-up' : 'thumb-up-off-alt'}
+            size={23}
             color={liked ? colors.like : colors.inkSoft}
           />
           {likeCount > 0 ? <Text style={[styles.actionCount, liked && styles.actionCountOn]}>{likeCount}</Text> : null}
@@ -964,8 +969,9 @@ export const PostCard: React.FC<PostCardProps> = ({
           accessibilityState={{ selected: prayed }}
         >
           <Image
-            source={prayed ? prayingHandFilled : prayingHandOutline}
-            style={[styles.prayIcon, { tintColor: prayed ? colors.pray : colors.inkSoft }]}
+            key={prayed ? 'praying' : 'not-praying'}
+            source={prayed ? prayFilled : prayOutline}
+            style={styles.prayIcon}
           />
           {prayCount > 0 ? <Text style={[styles.actionCount, prayed && styles.actionCountOn]}>{prayCount}</Text> : null}
         </TouchableOpacity>
@@ -1322,9 +1328,8 @@ const styles = StyleSheet.create({
   actionsSpacer: { flex: 1 },
   actionCount: { fontSize: 14, fontWeight: '600', color: colors.inkSoft },
   actionCountOn: { color: colors.ink },
-  /* The artwork has empty space around the hands, so it is drawn larger and pulled back in. */
-  prayIcon: { width: 31, height: 31, margin: -4 },
-  prayIconSmall: { width: 25, height: 25, margin: -3 },
+  prayIcon: { width: 25, height: 25 },
+  prayIconSmall: { width: 20, height: 20 },
 
   /* Comments and replies */
   sheetRoot: { flex: 1, backgroundColor: colors.card },
