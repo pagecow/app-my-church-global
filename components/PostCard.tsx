@@ -7,6 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import axios from 'axios';
 import { Avatar, Button, CircleButton } from './ui';
 import { CARD_GAP, colors, GUTTER, radius, TAP } from '../lib/theme';
+import { ReactionBook, setReactionInThread, toggleReaction } from '../lib/reactions';
 
 // The app's own praying-hands artwork, already trimmed, sized and coloured
 // (made from assets/prayingHand*.png). They are NOT recoloured with `tintColor`:
@@ -32,6 +33,14 @@ const MEDIA_WIDTH = SCREEN_WIDTH - GUTTER * 2;
 /** A very tall or very wide photo would make one post fill the screen, so it is letterboxed instead. */
 const clampAspectRatio = (ratio: number) => Math.min(Math.max(ratio, 0.8), 2.2);
 const LINK_PREVIEW_API = 'https://api.microlink.io';
+
+type CommentReaction = 'like' | 'heart' | 'pray';
+/** Where the API keeps each reaction on a comment or a reply. */
+const COMMENT_REACTION_FIELD: Record<CommentReaction, string> = {
+  like: 'comment_likes',
+  heart: 'comment_hearts',
+  pray: 'comment_praying',
+};
 
 const formatTimeDifference = (dateStr: string) => {
   const now = new Date();
@@ -229,122 +238,63 @@ export const PostCard: React.FC<PostCardProps> = ({
     };
   }, []);
 
-  const handleLike = async () => {
-    const was = liked;
-    setLiked(!was);
-    setLikeCount((c: number) => was ? c - 1 : c + 1);
-    try {
-      if (was) await axios.delete(`${API_URL}/posts/${post.id}/like`, { headers });
-      else await axios.post(`${API_URL}/posts/${post.id}/like`, {}, { headers });
-    } catch { setLiked(was); setLikeCount((c: number) => was ? c + 1 : c - 1); }
-  };
+  /**
+   * Like, love and pray all work the same way: the icon and the count change the
+   * moment they are tapped, and the server is told in the background. The rule
+   * (one request at a time, the last tap wins, nobody counts twice) is in
+   * lib/reactions.ts.
+   */
+  const reactionBook = useRef<ReactionBook>({});
 
-  const handleHeart = async () => {
-    const was = hearted;
-    setHearted(!was);
-    setHeartCount((c: number) => was ? c - 1 : c + 1);
-    try {
-      if (was) await axios.delete(`${API_URL}/posts/${post.id}/heart`, { headers });
-      else await axios.post(`${API_URL}/posts/${post.id}/heart`, {}, { headers });
-    } catch { setHearted(was); setHeartCount((c: number) => was ? c + 1 : c - 1); }
-  };
+  const flipReaction = (key: string, shown: boolean, endpoint: string, show: (on: boolean) => void) =>
+    toggleReaction(
+      reactionBook.current,
+      key,
+      shown,
+      {
+        add: () => axios.post(endpoint, {}, { headers }),
+        remove: () =>
+          axios.delete(endpoint, { headers }).catch((error: any) => {
+            // "Not found" means it is already off, which is what was asked for.
+            if (error?.response?.status !== 404) throw error;
+          }),
+      },
+      show
+    );
 
-  const handlePray = async () => {
-    const was = prayed;
-    setPrayed(!was);
-    setPrayCount((c: number) => was ? c - 1 : c + 1);
-    try {
-      if (was) await axios.delete(`${API_URL}/posts/${post.id}/pray`, { headers });
-      else await axios.post(`${API_URL}/posts/${post.id}/pray`, {}, { headers });
-    } catch { setPrayed(was); setPrayCount((c: number) => was ? c + 1 : c - 1); }
-  };
+  const handleLike = () =>
+    flipReaction('post:like', liked, `${API_URL}/posts/${post.id}/like`, (on) => {
+      setLiked(on);
+      setLikeCount((c: number) => Math.max(0, c + (on ? 1 : -1)));
+    });
 
+  const handleHeart = () =>
+    flipReaction('post:heart', hearted, `${API_URL}/posts/${post.id}/heart`, (on) => {
+      setHearted(on);
+      setHeartCount((c: number) => Math.max(0, c + (on ? 1 : -1)));
+    });
 
-  const handleCommentLike = async (commentId: string, isReply = false) => {
-    try {
-      const c = isReply 
-        ? activeParentComment.replies.find((r: any) => r.id === commentId)
-        : comments.find((c: any) => c.id === commentId);
-      if (!c) return;
+  const handlePray = () =>
+    flipReaction('post:pray', prayed, `${API_URL}/posts/${post.id}/pray`, (on) => {
+      setPrayed(on);
+      setPrayCount((c: number) => Math.max(0, c + (on ? 1 : -1)));
+    });
 
-      const wasLiked = c.comment_likes?.some((l: any) => l.church_userId === userId);
-      const endpoint = `${API_URL}/posts/${post.id}/comments/${commentId}/like`;
-      
-      if (wasLiked) await axios.delete(endpoint, { headers });
-      else await axios.post(endpoint, {}, { headers });
-
-      const updateList = (list: any[]) => list.map(item => {
-        if (item.id !== commentId) return item;
-        const nextLikes = wasLiked 
-          ? item.comment_likes.filter((l: any) => l.church_userId !== userId)
-          : [...(item.comment_likes || []), { church_userId: userId }];
-        return { ...item, comment_likes: nextLikes };
-      });
-
-      if (isReply) {
-        setActiveParentComment((prev: any) => ({ ...prev, replies: updateList(prev.replies) }));
-      } else {
-        setComments((prev) => updateList(prev));
+  /** Like, love or pray on a comment or a reply. */
+  const toggleCommentReaction = (item: any, kind: CommentReaction) => {
+    const field = COMMENT_REACTION_FIELD[kind];
+    const mine = !!item[field]?.some((r: any) => r.church_userId === userId);
+    flipReaction(
+      `comment:${item.id}:${kind}`,
+      mine,
+      `${API_URL}/posts/${post.id}/comments/${item.id}/${kind}`,
+      (on) => {
+        // A reply is held in two places (the comments list and the open reply thread), so both change.
+        const change = (comment: any) => setReactionInThread(comment, item.id, field, userId, on);
+        setComments((prev) => prev.map(change));
+        setActiveParentComment((prev: any) => (prev ? change(prev) : prev));
       }
-    } catch (e) { console.error(e); }
-  };
-
-  const handleCommentHeart = async (commentId: string, isReply = false) => {
-    try {
-      const c = isReply 
-        ? activeParentComment.replies.find((r: any) => r.id === commentId)
-        : comments.find((c: any) => c.id === commentId);
-      if (!c) return;
-
-      const wasHearted = c.comment_hearts?.some((h: any) => h.church_userId === userId);
-      const endpoint = `${API_URL}/posts/${post.id}/comments/${commentId}/heart`;
-      
-      if (wasHearted) await axios.delete(endpoint, { headers });
-      else await axios.post(endpoint, {}, { headers });
-
-      const updateList = (list: any[]) => list.map(item => {
-        if (item.id !== commentId) return item;
-        const nextHearts = wasHearted 
-          ? item.comment_hearts.filter((h: any) => h.church_userId !== userId)
-          : [...(item.comment_hearts || []), { church_userId: userId }];
-        return { ...item, comment_hearts: nextHearts };
-      });
-
-      if (isReply) {
-        setActiveParentComment((prev: any) => ({ ...prev, replies: updateList(prev.replies) }));
-      } else {
-        setComments((prev) => updateList(prev));
-      }
-    } catch (e) { console.error(e); }
-  };
-
-  const handleCommentPray = async (commentId: string, isReply = false) => {
-    try {
-      const c = isReply 
-        ? activeParentComment.replies.find((r: any) => r.id === commentId)
-        : comments.find((c: any) => c.id === commentId);
-      if (!c) return;
-
-      const wasPrayed = c.comment_praying?.some((p: any) => p.church_userId === userId);
-      const endpoint = `${API_URL}/posts/${post.id}/comments/${commentId}/pray`;
-      
-      if (wasPrayed) await axios.delete(endpoint, { headers });
-      else await axios.post(endpoint, {}, { headers });
-
-      const updateList = (list: any[]) => list.map(item => {
-        if (item.id !== commentId) return item;
-        const nextPrays = wasPrayed 
-          ? item.comment_praying.filter((p: any) => p.church_userId !== userId)
-          : [...(item.comment_praying || []), { church_userId: userId }];
-        return { ...item, comment_praying: nextPrays };
-      });
-
-      if (isReply) {
-        setActiveParentComment((prev: any) => ({ ...prev, replies: updateList(prev.replies) }));
-      } else {
-        setComments((prev) => updateList(prev));
-      }
-    } catch (e) { console.error(e); }
+    );
   };
 
   const openReplyThread = (comment: any) => {
@@ -740,7 +690,7 @@ export const PostCard: React.FC<PostCardProps> = ({
   };
 
   /** Like, love and pray under a comment or a reply. */
-  const renderCommentReactions = (item: any, isReply: boolean) => {
+  const renderCommentReactions = (item: any) => {
     const isLiked = item.comment_likes?.some((l: any) => l.church_userId === userId);
     const isHearted = item.comment_hearts?.some((h: any) => h.church_userId === userId);
     const isPrayed = item.comment_praying?.some((p: any) => p.church_userId === userId);
@@ -752,7 +702,7 @@ export const PostCard: React.FC<PostCardProps> = ({
       <View style={styles.commentReactions}>
         <TouchableOpacity
           style={styles.reactionItem}
-          onPress={() => handleCommentLike(item.id, isReply)}
+          onPress={() => toggleCommentReaction(item, 'like')}
           hitSlop={REACTION_HIT_SLOP}
           accessibilityRole="button"
           accessibilityLabel={`Like, ${likes}`}
@@ -767,7 +717,7 @@ export const PostCard: React.FC<PostCardProps> = ({
         </TouchableOpacity>
         <TouchableOpacity
           style={styles.reactionItem}
-          onPress={() => handleCommentHeart(item.id, isReply)}
+          onPress={() => toggleCommentReaction(item, 'heart')}
           hitSlop={REACTION_HIT_SLOP}
           accessibilityRole="button"
           accessibilityLabel={`Love, ${hearts}`}
@@ -782,7 +732,7 @@ export const PostCard: React.FC<PostCardProps> = ({
         </TouchableOpacity>
         <TouchableOpacity
           style={styles.reactionItem}
-          onPress={() => handleCommentPray(item.id, isReply)}
+          onPress={() => toggleCommentReaction(item, 'pray')}
           hitSlop={REACTION_HIT_SLOP}
           accessibilityRole="button"
           accessibilityLabel={`Praying, ${prays}`}
@@ -1072,7 +1022,7 @@ export const PostCard: React.FC<PostCardProps> = ({
                         multiline
                         scrollEnabled={false}
                       />
-                      <View style={styles.commentMetaRow}>{renderCommentReactions(item, true)}</View>
+                      <View style={styles.commentMetaRow}>{renderCommentReactions(item)}</View>
                     </View>
                   </View>
                 )}
@@ -1119,7 +1069,7 @@ export const PostCard: React.FC<PostCardProps> = ({
                         />
 
                         <View style={styles.commentMetaRow}>
-                          {renderCommentReactions(item, false)}
+                          {renderCommentReactions(item)}
                           <TouchableOpacity
                             style={styles.replyAction}
                             onPress={() => openReplyThread(item)}
