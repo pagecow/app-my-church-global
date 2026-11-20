@@ -121,7 +121,7 @@ export default function GroupSettingsScreen() {
   const remove = () => {
     Alert.alert(
       'Delete group',
-      'This permanently removes the group and its membership. Posts are not deleted.',
+      'This permanently removes the group, its members and its posts. It cannot be undone.',
       [
         { text: 'Cancel', style: 'cancel' },
         {

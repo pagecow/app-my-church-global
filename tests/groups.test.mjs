@@ -161,6 +161,16 @@ test('the screens use those rules', () => {
   assert.match(tab, /answer\.status === 'approved'/);
 });
 
+test('the Delete group warning says the posts go too, because they do', () => {
+  // A group's posts are tied to it in the database, so deleting the group removes them. The
+  // warning used to say "Posts are not deleted".
+  const settings = code('app/group/[id]/settings.tsx');
+  assert.match(settings, /removes the group, its members and its posts/);
+  assert.doesNotMatch(settings, /Posts are not deleted/);
+  // Archiving is the gentle choice: it keeps the posts.
+  assert.match(settings, /Existing posts are kept/);
+});
+
 // ------------------------------------------------------------------- ages
 
 test('a birth date is a day: the same age on every phone, on and around the birthday', () => {
