@@ -52,7 +52,11 @@ export default function GroupSettingsScreen() {
   const isOwner = group?.my_role === 'owner' || Boolean(user?.is_admin);
 
   const load = useCallback(async () => {
-    if (!token || !groupId) return;
+    if (!token || !groupId) {
+      // Nothing to ask for: stop the spinner instead of waiting for an answer that never comes.
+      setLoading(false);
+      return;
+    }
     try {
       const data = await groupsApi.getGroup(token, groupId);
       setGroup(data);

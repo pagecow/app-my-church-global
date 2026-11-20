@@ -2,12 +2,13 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { AppState, AppStateStatus } from 'react-native';
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { feedHasNothingToLoad } from '../lib/feed-state';
 
 /**
  * The paginated-feed state machine, extracted from app/(tabs)/index.tsx so the
  * group feed and the home feed cannot drift apart.
  *
- * Three behaviours here are load-bearing and easy to get wrong:
+ * Four behaviours here are load-bearing and easy to get wrong:
  *
  * 1. `canLoadMoreOnEndReachedRef` - FlatList fires onEndReached on mount and on
  *    every content-size change. Only a real user scroll may advance the page,
@@ -16,6 +17,10 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
  *    hands us a row we already have. Without dedupe that row renders twice.
  * 3. AppState background refresh - coming back after 5+ minutes refetches page
  *    one, so a stale feed does not greet someone returning to the app.
+ * 4. Nothing to load - `isPostsLoading` starts true and only a finished fetch
+ *    clears it. A caller that is `enabled` but has no endpoint (a group the
+ *    person has not joined) never fetches, so without the "nothing to load"
+ *    rule its screen showed a spinner forever.
  */
 
 export const PAGE_SIZE = 10;
@@ -59,6 +64,9 @@ export function usePaginatedPosts({
   endpointRef.current = endpoint;
   tokenRef.current = token;
 
+  // The caller is ready but there is no feed to read (see behaviour 4 above).
+  const nothingToLoad = feedHasNothingToLoad({ enabled, endpoint, token });
+
   useEffect(() => {
     mountedRef.current = true;
     return () => {
@@ -66,11 +74,28 @@ export function usePaginatedPosts({
     };
   }, []);
 
+  // Forget a feed that can no longer be read (the person just left the group), and arm the
+  // loading flag for whenever there is a feed again, so that moment starts with a spinner
+  // rather than a flash of "no posts". What the caller sees is masked below while idle.
+  useEffect(() => {
+    if (!nothingToLoad) return;
+    setPosts([]);
+    setPage(1);
+    setHasMore(false);
+    setIsPostsLoading(true);
+    setIsLoadingMore(false);
+    setIsRefreshing(false);
+  }, [nothingToLoad]);
+
   const fetchPosts = useCallback(
     async (pageNum: number, reset: boolean) => {
       const url = endpointRef.current;
       const authToken = tokenRef.current;
-      if (!url) return;
+      if (!url) {
+        // Nothing to read. End a refresh the caller just started, or its spinner never stops.
+        if (mountedRef.current) setIsRefreshing(false);
+        return;
+      }
       if (!reset && loadMoreInFlightRef.current) return;
 
       try {
@@ -192,7 +217,8 @@ export function usePaginatedPosts({
     setPosts,
     page,
     hasMore,
-    isPostsLoading,
+    // Never "loading" while there is nothing to load.
+    isPostsLoading: isPostsLoading && !nothingToLoad,
     isLoadingMore,
     isRefreshing,
     onRefresh,

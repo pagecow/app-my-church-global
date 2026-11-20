@@ -30,7 +30,11 @@ export default function GroupRequestsScreen() {
   const [busyId, setBusyId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    if (!token || !groupId) return;
+    if (!token || !groupId) {
+      // Nothing to ask for: stop the spinner instead of waiting for an answer that never comes.
+      setLoading(false);
+      return;
+    }
     try {
       const rows = await groupsApi.listJoinRequests(token, groupId);
       setRequests(rows);

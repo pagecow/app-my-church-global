@@ -16,6 +16,7 @@ import { useAuth } from '../../../context/AuthContext';
 import { PostCard } from '../../../components/PostCard';
 import {
   Avatar,
+  Button,
   EmptyState,
   IconName,
   Loading,
@@ -26,6 +27,14 @@ import {
 import { usePaginatedPosts } from '../../../hooks/usePaginatedPosts';
 import { API_URL, Group, groupsApi, groupsErrorMessage } from '../../../lib/groups';
 import { useAccent } from '../../../lib/churchColor';
+import { groupFeedEndpoint } from '../../../lib/group-feed';
+import {
+  canLeaveGroup,
+  canPostInGroup,
+  groupNotice,
+  joinActionFor,
+  leaveGroupMessage,
+} from '../../../lib/group-permissions';
 import { CARD_GAP, colors, GUTTER, radius, shapes, text } from '../../../lib/theme';
 
 const REFRESH_KEY = 'needsGroupsRefresh';
@@ -43,10 +52,17 @@ export default function GroupDetailScreen() {
   const [groupLoading, setGroupLoading] = useState(true);
   const [accessError, setAccessError] = useState<string | null>(null);
   const [acceptingInvite, setAcceptingInvite] = useState(false);
+  const [joining, setJoining] = useState(false);
   const acceptedInviteRef = useRef<string>('');
+  // Counts the loads, so an answer that arrives after a newer load began is thrown away.
+  const latestLoad = useRef(0);
 
   const isMember = group?.membership_state === 'active';
-  const canPost = Boolean(isMember && (group?.my_role === 'owner' || group?.my_role === 'admin' || user?.is_admin));
+  // Every member may post in their groups, even when the church keeps "All app users can
+  // post in the app" off: that setting is only for the Home feed.
+  const canPost = canPostInGroup(group);
+  const joinAction = joinActionFor(group);
+  const notice = groupNotice(group);
   const canManage = Boolean(
     group?.my_role === 'owner' || group?.my_role === 'admin' || user?.is_admin
   );
@@ -56,16 +72,23 @@ export default function GroupDetailScreen() {
   }, []);
 
   const loadGroup = useCallback(async () => {
-    if (!token || !groupId) return;
+    if (!token || !groupId) {
+      // Nothing to ask for: stop the spinner instead of waiting for an answer that never comes.
+      setGroupLoading(false);
+      return;
+    }
+    const thisLoad = ++latestLoad.current;
     try {
       const data = await groupsApi.getGroup(token, groupId);
+      if (thisLoad !== latestLoad.current) return;
       setGroup(data);
       setAccessError(null);
     } catch (e: any) {
+      if (thisLoad !== latestLoad.current) return;
       setGroup(null);
       setAccessError(groupsErrorMessage(e, 'Could not load this group.'));
     } finally {
-      setGroupLoading(false);
+      if (thisLoad === latestLoad.current) setGroupLoading(false);
     }
   }, [token, groupId]);
 
@@ -92,11 +115,9 @@ export default function GroupDetailScreen() {
   );
 
   // Only members may read the feed. A non-member gets no request at all rather
-  // than a 403 the UI has to explain.
-  const feedEndpoint =
-    token && groupId && appId && isMember
-      ? `${API_URL}/groups/${groupId}/posts?appId=${encodeURIComponent(appId)}`
-      : null;
+  // than a 403 the UI has to explain, and the feed then has nothing to load, so this
+  // screen must not wait for it (it used to, and spun forever).
+  const feedEndpoint = groupFeedEndpoint({ apiUrl: API_URL, token, groupId, appId, group });
 
   const {
     posts,
@@ -108,7 +129,13 @@ export default function GroupDetailScreen() {
     onEndReached,
     markScrollable,
     consumeRefreshFlag,
-  } = usePaginatedPosts({ endpoint: feedEndpoint, token, refreshKey: REFRESH_KEY });
+  } = usePaginatedPosts({
+    endpoint: feedEndpoint,
+    token,
+    refreshKey: REFRESH_KEY,
+    // Ready once the group has been read: until then nobody knows whether there is a feed.
+    enabled: !groupLoading,
+  });
 
   useFocusEffect(
     useCallback(() => {
@@ -128,6 +155,46 @@ export default function GroupDetailScreen() {
       </View>
     );
   }
+
+  // Join (public) or ask to join (private). The server says which of the two happened, so the
+  // group is read back instead of guessing "waiting for approval".
+  const joinGroup = async () => {
+    if (!token || joining) return;
+    setJoining(true);
+    try {
+      await groupsApi.requestToJoin(token, group.id);
+      await loadGroup();
+    } catch (e: any) {
+      Alert.alert('Could not join', groupsErrorMessage(e, 'Please try again.'));
+    } finally {
+      setJoining(false);
+    }
+  };
+
+  const confirmLeave = () => {
+    if (!token) return;
+    const advice = leaveGroupMessage(group);
+    if (advice.blocked) {
+      Alert.alert('You are the only member', advice.message);
+      return;
+    }
+    Alert.alert(`Leave ${group.name}?`, advice.message, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Leave',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await groupsApi.leaveGroup(token, group.id);
+            // The Groups list reads itself again when it comes back into view.
+            router.back();
+          } catch (e: any) {
+            Alert.alert('Could not leave', groupsErrorMessage(e, 'Please try again.'));
+          }
+        },
+      },
+    ]);
+  };
 
   const ListHeader = () => (
     <View>
@@ -152,18 +219,9 @@ export default function GroupDetailScreen() {
           </View>
         </View>
         {group.description ? <Text style={styles.description}>{group.description}</Text> : null}
-        {!isMember ? (
-          <Notice
-            kind="neutral"
-            style={styles.joinNotice}
-            message={
-              group.membership_state === 'pending' || group.has_pending_request
-                ? 'Your request to join is waiting for approval.'
-                : group.visibility === 'private'
-                ? 'This is a private group. Request to join to see the feed.'
-                : 'Join this group to see the feed.'
-            }
-          />
+        {notice ? <Notice kind="neutral" style={styles.joinNotice} message={notice} /> : null}
+        {joinAction ? (
+          <Button label={joinAction.label} kind={joinAction.kind} loading={joining} onPress={joinGroup} />
         ) : null}
       </View>
 
@@ -194,6 +252,12 @@ export default function GroupDetailScreen() {
               />
             </>
           ) : null}
+          {canLeaveGroup(group) ? (
+            <>
+              <View style={[shapes.divider, styles.actionDivider]} />
+              <ActionRow icon="exit-outline" label="Leave group" danger onPress={confirmLeave} />
+            </>
+          ) : null}
         </View>
       ) : null}
 
@@ -217,7 +281,8 @@ export default function GroupDetailScreen() {
     </View>
   );
 
-  if (isPostsLoading && !isRefreshing) {
+  // Only a member has a feed to wait for.
+  if (isMember && isPostsLoading && !isRefreshing) {
     return (
       <View style={shapes.page}>
         <StackHeader title={group.name} onBack={() => router.back()} />
@@ -274,8 +339,19 @@ export default function GroupDetailScreen() {
   );
 }
 
-/** One line of the group's own menu: Members, Requests, Settings. */
-function ActionRow({ icon, label, onPress }: { icon: IconName; label: string; onPress: () => void }) {
+/** One line of the group's own menu: Members, Requests, Settings, Leave group. */
+function ActionRow({
+  icon,
+  label,
+  onPress,
+  danger = false,
+}: {
+  icon: IconName;
+  label: string;
+  onPress: () => void;
+  /** Red, for leaving. */
+  danger?: boolean;
+}) {
   return (
     <TouchableOpacity
       style={styles.actionRow}
@@ -284,11 +360,11 @@ function ActionRow({ icon, label, onPress }: { icon: IconName; label: string; on
       accessibilityRole="button"
       accessibilityLabel={label}
     >
-      <Ionicons name={icon} size={22} color={colors.inkSoft} />
-      <Text style={styles.actionText} numberOfLines={1}>
+      <Ionicons name={icon} size={22} color={danger ? colors.red : colors.inkSoft} />
+      <Text style={[styles.actionText, danger ? { color: colors.red } : null]} numberOfLines={1}>
         {label}
       </Text>
-      <Ionicons name="chevron-forward" size={18} color={colors.inkFaint} />
+      {danger ? null : <Ionicons name="chevron-forward" size={18} color={colors.inkFaint} />}
     </TouchableOpacity>
   );
 }

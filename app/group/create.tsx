@@ -123,8 +123,8 @@ export default function CreateGroupScreen() {
         </View>
 
         <Text style={[text.footnote, styles.footnote]}>
-          Group posts are only delivered to members. The group is announced in the church app
-          only if you make it public.
+          Only members can see a group's posts. Anyone in your church can see that a private
+          group exists, and ask to join it.
         </Text>
       </ScrollView>
     </KeyboardAvoidingView>

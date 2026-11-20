@@ -4,10 +4,8 @@ import axios from 'axios';
  * Groups API client.
  *
  * Every path here is relative to the same backend the rest of the app uses
- * (https://appmychurch.com/api/v1). These endpoints are NOT deployed yet -
- * they follow the contract agreed in the "Groups 1 - Schema & API" plan
- * column. Until that backend work lands, calls will 404 and the UI degrades
- * to its empty/error states rather than crashing.
+ * (https://appmychurch.com/api/v1). The server lives in the website's repo
+ * (app/api/v1/groups); its answers are the contract this file codes against.
  */
 
 export const API_URL = 'https://appmychurch.com/api/v1';
@@ -90,27 +88,34 @@ export interface InvitableMember {
   is_admin: boolean;
 }
 
-/** Whole years between a birth date and today, or null when it is unusable. */
-export function ageFromBirthDate(birthDate?: string | null): number | null {
+/**
+ * Whole years between a birth date and today, or null when it is unusable.
+ *
+ * A birth date is a day, not a moment: the server keeps it as midnight UTC of that day
+ * (`1990-05-20T00:00:00.000Z`). It is read in UTC, so the day is the same on every phone;
+ * read in the phone's own time zone it became the day before in the Americas, and the age
+ * went up a day early. "Today" is the person's own today.
+ */
+export function ageFromBirthDate(birthDate?: string | null, now: Date = new Date()): number | null {
   if (!birthDate) return null;
   const born = new Date(birthDate);
   if (Number.isNaN(born.getTime())) return null;
-  const now = new Date();
-  let age = now.getFullYear() - born.getFullYear();
+  let age = now.getFullYear() - born.getUTCFullYear();
   const beforeBirthday =
-    now.getMonth() < born.getMonth() ||
-    (now.getMonth() === born.getMonth() && now.getDate() < born.getDate());
+    now.getMonth() < born.getUTCMonth() ||
+    (now.getMonth() === born.getUTCMonth() && now.getDate() < born.getUTCDate());
   if (beforeBirthday) age -= 1;
   return age >= 0 && age < 130 ? age : null;
 }
 
-/** "Age 34 · Male" style summary, skipping whatever is missing. */
+/** "34 · Male" style summary, skipping whatever is missing. */
 export function describeMemberDetails(
   birthDate?: string | null,
-  gender?: string | null
+  gender?: string | null,
+  now: Date = new Date()
 ): string {
   const parts: string[] = [];
-  const age = ageFromBirthDate(birthDate);
+  const age = ageFromBirthDate(birthDate, now);
   if (age !== null) parts.push(`${age}`);
   if (gender) parts.push(gender.charAt(0).toUpperCase() + gender.slice(1));
   return parts.join(' · ');
@@ -253,12 +258,22 @@ export const groupsApi = {
     return res.data ?? {};
   },
 
-  async requestToJoin(token: string, groupId: string, message?: string): Promise<void> {
-    await axios.post(
+  /**
+   * Ask to join. A public group lets the person in at once (`status: 'approved'`); a private
+   * one keeps the request until an owner or admin decides (`status: 'pending'`). Callers read
+   * the answer instead of assuming which of the two happened.
+   */
+  async requestToJoin(
+    token: string,
+    groupId: string,
+    message?: string
+  ): Promise<{ status?: string; already_member?: boolean }> {
+    const res = await axios.post(
       `${API_URL}/groups/${groupId}/requests`,
       message ? { message } : {},
       { headers: authHeaders(token) }
     );
+    return res.data ?? {};
   },
 
   async listJoinRequests(token: string, groupId: string): Promise<GroupJoinRequest[]> {

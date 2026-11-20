@@ -70,7 +70,11 @@ export default function GroupMembersScreen() {
   const isOwner = myRole === 'owner' || Boolean(user?.is_admin);
 
   const load = useCallback(async () => {
-    if (!token || !groupId) return;
+    if (!token || !groupId) {
+      // Nothing to ask for: stop the spinner instead of waiting for an answer that never comes.
+      setLoading(false);
+      return;
+    }
     try {
       const [g, m] = await Promise.all([
         groupsApi.getGroup(token, groupId),
@@ -114,6 +118,8 @@ export default function GroupMembersScreen() {
     try {
       await groupsApi.inviteMember(token, groupId, person.id);
       setInvitedIds((prev) => (prev.includes(person.id) ? prev : [...prev, person.id]));
+      // The server adds them to the group at once, so the list and the count below must show them.
+      await load();
       Alert.alert(`${firstNameOf(person.name)} was added to your group!`);
     } catch (e: any) {
       Alert.alert('Could not invite', groupsErrorMessage(e, 'Please try again.'));
@@ -273,7 +279,8 @@ export default function GroupMembersScreen() {
               ]}
               activeOpacity={canManage && item.role !== 'owner' ? 0.7 : 1}
               onPress={() => {
-                if (item.role === 'owner') return;
+                // A plain member has nothing to do with another member, so no dialog that only says Cancel.
+                if (item.role === 'owner' || !canManage) return;
                 Alert.alert(item.name, 'What would you like to do?', [
                   { text: 'Cancel', style: 'cancel' },
                   ...(isOwner

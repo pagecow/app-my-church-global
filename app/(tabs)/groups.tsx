@@ -45,13 +45,16 @@ export default function GroupsScreen() {
   const isAdmin = Boolean(user?.is_admin);
 
   const load = useCallback(async () => {
+    // Nothing to ask for: stop both spinners, or a pull-to-refresh would spin forever.
     if (!token) {
       setLoading(false);
+      setRefreshing(false);
       return;
     }
     const appId = await AsyncStorage.getItem('appId');
     if (!appId) {
       setLoading(false);
+      setRefreshing(false);
       return;
     }
     try {
@@ -87,12 +90,26 @@ export default function GroupsScreen() {
     if (!token) return;
     setRequestingId(group.id);
     try {
-      await groupsApi.requestToJoin(token, group.id);
-      // Reflect it immediately: the row flips to "Requested" without a
-      // round trip, and the next refresh confirms it from the server.
+      const answer = await groupsApi.requestToJoin(token, group.id);
+      // A public group lets the person in at once ("approved"); a private one waits for an
+      // owner or admin ("pending"). Show what the server said, not "Requested" for both.
+      const joined = answer.status === 'approved';
       setGroups((prev) =>
-        prev.map((g) => (g.id === group.id ? { ...g, has_pending_request: true } : g))
+        prev.map((g) => {
+          if (g.id !== group.id) return g;
+          if (!joined) return { ...g, has_pending_request: true, membership_state: 'pending' };
+          return {
+            ...g,
+            membership_state: 'active',
+            has_pending_request: false,
+            my_role: g.my_role ?? 'member',
+            member_count:
+              typeof g.member_count === 'number' && !answer.already_member ? g.member_count + 1 : g.member_count,
+          };
+        })
       );
+      // The next read confirms it from the server.
+      void load();
     } catch (e: any) {
       Alert.alert('Could not request access', groupsErrorMessage(e, 'Please try again.'));
     } finally {
