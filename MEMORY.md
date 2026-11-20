@@ -356,3 +356,46 @@ T.J. found in TestFlight that the bell did nothing, so 1.5.0 was replaced the sa
 - **Apple** (Apple id 6736629497): 1.5.1 was withdrawn from review and the same version record was turned into 1.5.2 with the new build (`node asc-replace-in-review.mjs 6736629497 1.5.2` in `tmp/store-submit/` of the projects folder, after `xcrun altool --upload-app` and about four minutes of processing). State: WAITING_FOR_REVIEW, releases by itself when approved. **1.5.0 and 1.5.1 were never released on iPhone.** "What's New" is unchanged (the text T.J. approved for 1.5.0).
 - The four store files are in `tmp/builds/` of the projects folder (`church-app-1.5.2.*`, `cc-church-1.5.2.*`); `tmp/store-submit/build-all.sh` builds all four (change the version in its file names first).
 - A colour only shows in app versions from 1.5.2, and only after the website has the `theme_color` field (it has, since 2026-11-19).
+
+## 2026-11-20 07:00:00
+
+## 1.5.3 — Groups: a group you have not joined opens, join and leave buttons, every member can post (replaced 1.5.2)
+
+### What was wrong, and the rules to keep
+- **A group you had not joined showed a spinner forever.** Tapping a row under "More groups" opened the group on a spinner that never stopped. `usePaginatedPosts` starts with `isPostsLoading = true` and only a finished fetch clears it; the group screen gave the hook no feed address for a non-member (the server answers 403 to a non-member's feed), so no fetch ever ran.
+  - **Rule:** a feed whose caller is `enabled` but has no endpoint is never "loading" (`feedHasNothingToLoad`, `lib/feed-state.ts`, used by the hook). The hook also ends a refresh that has nothing to read, instead of leaving its spinner on.
+  - `groupFeedEndpoint` (`lib/group-feed.ts`) builds the feed address from the group's own `church_id`, not from the church id stored on the phone, so a member never waits on a stored value.
+- **The group screen told a non-member to "request to join" and had no button.** It shows "Join group" (public: the server lets the person in at once) or "Ask to join" (private: an owner or admin approves), and nothing when they already asked or the group is archived (`joinActionFor`, `groupNotice`, `lib/group-permissions.ts`).
+- **"Leave group"**: a red row for members (`leaveGroupMessage`: an owner is told another member takes over; a group's only member, who is also its owner, is pointed to Delete in the settings). The server's own push says "You can leave it any time"; nothing in the app could.
+- **Every member may post in their groups**, even when the church keeps "All app users can post in the app" off (that setting is the Home feed's): `canPostInGroup`. An archived group offers no post box (the server answers 400). The server's matching rule is `canPostInGroup` in the website's `lib/groups/access-rules.ts`; app versions before 1.5.3 only show the box to a group's owner and admins.
+- **Groups list:** joining a public group no longer shows "Requested" (the server answers `status: "approved"`), and a pull to refresh cannot spin forever when there is no sign-in.
+- **Members:** the list refreshes after an invite (the server adds the person at once); a plain member tapping another member gets nothing, instead of a dialog that only says Cancel.
+- **Ages:** the age on a join request reads the birth date in UTC. The server keeps a day as midnight UTC, and read in a US time zone that is the day before, so the age went up a day early.
+- **The "Delete group" warning says the posts go too.** A group's posts are tied to it in the database, so deleting the group removes them (the server now hides them for good when it deletes a group). Archive is the choice that keeps them.
+- **The "New Group" note** no longer says a group is announced only if it is public: everyone in the church sees a private group's name and can ask to join it.
+- Identical in both apps: `lib/groups.ts`, `lib/group-permissions.ts`, `lib/group-feed.ts`, `lib/feed-state.ts`, `hooks/usePaginatedPosts.ts`, `app/(tabs)/groups.tsx`, `app/group/*`, `tests/groups.test.mjs`, `tests/group-posting.test.mjs`. `npm test` runs `tests/groups.test.mjs` in three time zones.
+
+### The server changes that go with it (website repo, pushed 2026-11-20 before the store files were uploaded)
+- A banned or deleted member leaves every group (roster, push topic, open requests; an owned group goes to the next member).
+- Deleting a group that had comments, likes or photos used to fail with a 500 after its push topic was destroyed. It now works.
+- A private group's push no longer carries the post's words, and a comment on a group post is pushed only to people still in the group.
+- Reporting or editing a group post (or its comments) by id requires membership. The roster lists the owner first.
+- Details: `lib/groups/README.md` in the website repo.
+
+### How it was checked
+- iPhone simulator, signed in by T.J. to the Grace Church demo: before the fix, "Youth Leaders" (a private group the demo member had asked to join) spun forever; after it, the group opens with "Your request to join is waiting for approval." Looked at (not tapped, so the demo church's data was not changed): "Prayer Team" shows "Ask to join"; "Men's Breakfast" shows Members, Requests, Settings, "Leave group" and the post box; Home still loads.
+- `npm run typecheck` and `npm test` pass in both apps. The store files were searched for the new wording before upload.
+- Not checked: Android, "Join group" on a public group and "Leave group" end to end (they write to the demo church), and the server's group delete against real data (it was reasoned from the database's foreign keys).
+
+### Not changed, for T.J. to decide
+- **Delete account** (`DELETE /api/v1/user` on the website) very likely fails for anyone whose posts were reacted to, commented on, or have a photo: it deletes only the person's own reactions and comments, then their posts, and the database refuses to delete a post that other people's likes, comments or photos still point to. It is the account deletion the App Store requires. It was not run (destructive). The dashboard's `deleteChurchUser` handles part of this and is also incomplete (other people's reactions on comments). Worth fixing and testing on the Example Church.
+- A group's push topic is named after its id, and the push credentials are in every member's phone, so a church member who is not in a private group could put themselves on its topic. That is why a private group's push carries no post text now. An unguessable topic name would close it (the existing topics would have to be renamed).
+- A group owner or admin who is not a church admin cannot delete another member's post (only the author and church admins can); members can report it.
+
+### Where 1.5.3 stands (2026-11-20)
+- Built from commit `7434a5d`. `app.json`: version 1.5.3, iOS build "1.5.3", Android versionCode 29.
+- **Google Play** (`com.amc.appmychurchglobal`): 1.5.3 (29) uploaded straight to the **production** track (it had 28).
+- **Apple** (Apple id 6736629497): 1.5.2 was withdrawn from review (T.J. said to replace it) and the same version record was turned into 1.5.3 with the new build (`node asc-replace-in-review.mjs 6736629497 1.5.3` in `tmp/store-submit/` of the projects folder, after `xcrun altool --upload-app` and about three minutes of processing). State: WAITING_FOR_REVIEW, releases by itself when approved. **1.5.0, 1.5.1 and 1.5.2 were never released on iPhone**; the live iPhone version is still 1.3.3.
+- "What's New" (T.J. approved the wording for this release): `- fresh new look` / `- events can repeat weekly or monthly` / `- join, leave and post in groups`.
+- The four store files are in `tmp/builds/` of the projects folder (`church-app-1.5.3.*`, `cc-church-1.5.3.*`). `tmp/store-submit/build-all.sh` builds all four. `asc-replace-in-review.mjs` now takes the "What's New" text from the `WHATS_NEW` environment variable (one dash line per line, e.g. `WHATS_NEW=$'- line one\n- line two' node asc-replace-in-review.mjs <apple id> <version>`); without it, it uses the text in `asc-submit.mjs`.
+- Two things that cost time: **read an upload's output, not its exit code.** A command piped through `tail` exits 0 even when `altool` printed an error (the first Apple upload failed because the Key ID was read with the wrong quotes); look for "UPLOAD SUCCEEDED" and "Successfully finished the upload to Google Play". And **this repo's remote is SSH** (`git@github.com:pagecow/app-my-church-global.git`), which does not authenticate from a Claude session: push with `git push https://github.com/pagecow/app-my-church-global.git main`.
